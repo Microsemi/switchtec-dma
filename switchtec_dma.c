@@ -201,7 +201,8 @@ struct switchtec_dma_chan {
 	struct switchtec_dma_hw_ce *hw_cq;
 	dma_addr_t dma_addr_cq;
 
-	struct kobject kobj;
+	struct kobject config_kobj;
+	struct kobject pmon_kobj;
 };
 
 struct switchtec_dma_dev {
@@ -947,6 +948,7 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 	/* Disable the channle */
 	valid_en_se = readl(&chan_fw->valid_en_se);
 	valid_en_se &= ~SWITCHTEC_CHAN_ENABLE;
+
 #if 0
 	writel(valid_en_se, &chan_fw->valid_en_se);
 
@@ -958,7 +960,7 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 #define SWITCHTEC_DMA_CHAN_HW_REGS_SIZE 0x1000
 #define SWITCHTEC_DMA_CHAN_FW_REGS_SIZE 0x80
 
-struct kobj_type switchtec_ktype;
+struct kobj_type switchtec_config_ktype;
 
 static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 {
@@ -1588,46 +1590,90 @@ err_unlock:
 
 struct switchtec_sysfs_entry latency_selector_attr =__ATTR_RW(latency_selector);
 
-static ssize_t switchtec_attr_show(struct kobject *kobj, struct attribute *attr,
-				   char *page)
+static ssize_t switchtec_config_attr_show(struct kobject *kobj,
+					  struct attribute *attr, char *page)
 {
 	struct switchtec_sysfs_entry *entry;
 	struct switchtec_dma_chan *swdma_chan;
 
 	entry = container_of(attr, struct switchtec_sysfs_entry, attr);
-	swdma_chan = container_of(kobj, struct switchtec_dma_chan, kobj);
+	swdma_chan = container_of(kobj, struct switchtec_dma_chan, config_kobj);
 
 	if (!entry->show)
 		return -EIO;
 	return entry->show(&swdma_chan->dma_chan, page);
 }
 
-static ssize_t switchtec_attr_store(struct kobject *kobj,
-				    struct attribute *attr, const char *page,
-				    size_t count)
+static ssize_t switchtec_config_attr_store(struct kobject *kobj,
+					   struct attribute *attr,
+					   const char *page, size_t count)
 {
 	struct switchtec_sysfs_entry *entry;
 	struct switchtec_dma_chan *swdma_chan;
 
 	entry = container_of(attr, struct switchtec_sysfs_entry, attr);
-	swdma_chan = container_of(kobj, struct switchtec_dma_chan, kobj);
+	swdma_chan = container_of(kobj, struct switchtec_dma_chan, config_kobj);
 
 	if (!entry->store)
 		return -EIO;
 	return entry->store(&swdma_chan->dma_chan, page, count);
 }
 
-const struct sysfs_ops switchtec_sysfs_ops = {
-	.show	= switchtec_attr_show,
-	.store  = switchtec_attr_store,
+const struct sysfs_ops switchtec_config_sysfs_ops = {
+	.show	= switchtec_config_attr_show,
+	.store  = switchtec_config_attr_store,
 };
 
-static struct attribute *switchtec_attrs[] = {
+static struct attribute *switchtec_config_attrs[] = {
 	&burst_scale_attr.attr,
 	&burst_size_attr.attr,
 	&interval_attr.attr,
 	&arb_weight_attr.attr,
 	&mrrs_attr.attr,
+	NULL,
+};
+
+struct kobj_type switchtec_config_ktype = {
+	.sysfs_ops = &switchtec_config_sysfs_ops,
+	.default_attrs = switchtec_config_attrs,
+};
+
+static ssize_t switchtec_pmon_attr_show(struct kobject *kobj,
+					struct attribute *attr, char *page)
+{
+	struct switchtec_sysfs_entry *entry;
+	struct switchtec_dma_chan *swdma_chan;
+
+	entry = container_of(attr, struct switchtec_sysfs_entry, attr);
+	swdma_chan = container_of(kobj, struct switchtec_dma_chan, pmon_kobj);
+
+	if (!entry->show)
+		return -EIO;
+	return entry->show(&swdma_chan->dma_chan, page);
+}
+
+static ssize_t switchtec_pmon_attr_store(struct kobject *kobj,
+					 struct attribute *attr,
+					 const char *page, size_t count)
+{
+	struct switchtec_sysfs_entry *entry;
+	struct switchtec_dma_chan *swdma_chan;
+
+	entry = container_of(attr, struct switchtec_sysfs_entry, attr);
+	swdma_chan = container_of(kobj, struct switchtec_dma_chan, pmon_kobj);
+
+	if (!entry->store)
+		return -EIO;
+	return entry->store(&swdma_chan->dma_chan, page, count);
+}
+
+const struct sysfs_ops switchtec_pmon_sysfs_ops = {
+	.show	= switchtec_pmon_attr_show,
+	.store  = switchtec_pmon_attr_store,
+};
+
+
+static struct attribute *switchtec_pmon_attrs[] = {
 	&fetched_se_count_attr.attr,
 	&byte_count_attr.attr,
 	&se_pending_attr.attr,
@@ -1640,11 +1686,10 @@ static struct attribute *switchtec_attrs[] = {
 	NULL,
 };
 
-struct kobj_type switchtec_ktype = {
-	.sysfs_ops = &switchtec_sysfs_ops,
-	.default_attrs = switchtec_attrs,
+struct kobj_type switchtec_pmon_ktype = {
+	.sysfs_ops = &switchtec_pmon_sysfs_ops,
+	.default_attrs = switchtec_pmon_attrs,
 };
-
 
 void switchtec_chan_kobject_add(struct switchtec_dma_chan *swdma_chan)
 {
@@ -1652,12 +1697,20 @@ void switchtec_chan_kobject_add(struct switchtec_dma_chan *swdma_chan)
 	int err;
 
 	parent = &swdma_chan->dma_chan.dev->device.kobj;
-	err = kobject_init_and_add(&swdma_chan->kobj, &switchtec_ktype,
-			parent, "perf");
+	err = kobject_init_and_add(&swdma_chan->config_kobj,
+				   &switchtec_config_ktype, parent, "config");
 	if (err) {
 		dev_warn(to_chan_dev(swdma_chan),
-			 "sysfs init error (%d), continuing...\n", err);
-		kobject_put(&swdma_chan->kobj);
+			 "sysfs config init error (%d), continuing...\n", err);
+		kobject_put(&swdma_chan->config_kobj);
+	}
+
+	err = kobject_init_and_add(&swdma_chan->pmon_kobj,
+				   &switchtec_pmon_ktype, parent, "pmon");
+	if (err) {
+		dev_warn(to_chan_dev(swdma_chan),
+			 "sysfs pmon init error (%d), continuing...\n", err);
+		kobject_put(&swdma_chan->pmon_kobj);
 	}
 }
 
@@ -1675,9 +1728,14 @@ void switchtec_kobject_add(struct switchtec_dma_dev *swdma_dev)
 
 void switchtec_chan_kobject_del(struct switchtec_dma_chan *swdma_chan)
 {
-	if (swdma_chan->kobj.state_initialized) {
-		kobject_del(&swdma_chan->kobj);
-		kobject_put(&swdma_chan->kobj);
+	if (swdma_chan->config_kobj.state_initialized) {
+		kobject_del(&swdma_chan->config_kobj);
+		kobject_put(&swdma_chan->config_kobj);
+	}
+
+	if (swdma_chan->pmon_kobj.state_initialized) {
+		kobject_del(&swdma_chan->pmon_kobj);
+		kobject_put(&swdma_chan->pmon_kobj);
 	}
 }
 
