@@ -677,6 +677,73 @@ err_unlock:
 	return NULL;
 }
 
+struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
+		struct dma_chan *c, dma_addr_t dst, u64 data,
+		unsigned long flags)
+{
+	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(c);
+	struct device *chan_dev = to_chan_dev(swdma_chan);
+	struct switchtec_dma_desc *desc;
+
+	dev_dbg(chan_dev, "\n");
+
+	spin_lock_bh(&swdma_chan->ring_lock);
+	if (!swdma_chan->ring_active)
+		goto err_unlock;
+
+	if (!CIRC_SPACE(swdma_chan->head, swdma_chan->tail,
+			SWITCHTEC_DMA_RING_SIZE))
+		goto err_unlock;
+
+	desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->head);
+
+	desc->completed = false;
+	desc->hw->opc = SWITCHTEC_DMA_OPC_WRIMM;
+	desc->hw->daddr_lo = cpu_to_le32(lower_32_bits(dst));
+	desc->hw->daddr_hi = cpu_to_le32(upper_32_bits(dst));
+	desc->hw->saddr_widata_lo = cpu_to_le32(lower_32_bits(data));
+	desc->hw->saddr_widata_hi = cpu_to_le32(upper_32_bits(data));
+	desc->hw->byte_cnt = cpu_to_le32(8);
+	desc->hw->tlp_setting = 0;
+	swdma_chan->cid &= SWITCHTEC_SE_CID_MASK;
+	desc->hw->cid = cpu_to_le16(swdma_chan->cid++);
+	desc->index = swdma_chan->head;
+
+	dev_dbg(chan_dev, "SE WIMM Data: 0x%08x_%08x\n",
+		desc->hw->saddr_widata_hi,
+		desc->hw->saddr_widata_lo);
+	dev_dbg(chan_dev, "SE DADDR    : 0x%08x_%08x\n",
+		desc->hw->daddr_hi, desc->hw->daddr_lo);
+	dev_dbg(chan_dev, "SE BCOUNT   : 0x%08x\n", desc->hw->byte_cnt);
+
+	desc->orig_size = 8;
+
+	if (flags & DMA_PREP_INTERRUPT)
+		desc->hw->ctrl |= SWITCHTEC_SE_LIOF;
+
+	if (flags & DMA_PREP_FENCE)
+		desc->hw->ctrl |= SWITCHTEC_SE_BRR;
+
+	desc->txd.flags = flags;
+
+	swdma_chan->head++;
+	swdma_chan->head &= SWITCHTEC_DMA_RING_SIZE - 1;
+
+	/* return with the lock held, it will be released in tx_submit */
+
+	return &desc->txd;
+
+err_unlock:
+	/*
+	 * Keep sparse happy by restoring an even lock count on
+	 * this lock.
+	 */
+	__acquire(swdma_chan->ring_lock);
+
+	spin_unlock_bh(&swdma_chan->ring_lock);
+	return NULL;
+}
+
 static dma_cookie_t switchtec_dma_tx_submit(
 		struct dma_async_tx_descriptor *desc)
 	__releases(swdma_chan->ring_lock)
@@ -1878,6 +1945,7 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 	dma->device_alloc_chan_resources = switchtec_dma_alloc_chan_resources;
 	dma->device_free_chan_resources = switchtec_dma_free_chan_resources;
 	dma->device_prep_dma_memcpy = switchtec_dma_prep_memcpy;
+	dma->device_prep_dma_imm_data = switchtec_dma_prep_wimm_data;
 	dma->device_issue_pending = switchtec_dma_issue_pending;
 	dma->device_tx_status = switchtec_dma_tx_status;
 
