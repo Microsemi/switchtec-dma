@@ -261,6 +261,7 @@ struct switchtec_dma_hw_se_desc {
 };
 
 #define SWITCHTEC_SE_LIOF               BIT(6)
+#define SWITCHTEC_SE_BRR                BIT(7)
 #define SWITCHTEC_SE_CID_MASK           GENMASK(15, 0)
 
 #define SWITCHTEC_CE_SC_LEN_ERR         BIT(0)
@@ -627,6 +628,9 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 
 	if (flags & DMA_PREP_INTERRUPT)
 		desc->hw->ctrl |= SWITCHTEC_SE_LIOF;
+
+	if (flags & DMA_PREP_FENCE)
+		desc->hw->ctrl |= SWITCHTEC_SE_BRR;
 
 	desc->txd.flags = flags;
 
