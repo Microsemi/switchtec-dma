@@ -408,8 +408,8 @@ static int enable_channel(struct switchtec_dma_chan *swdma_chan)
 	return 0;
 }
 
-#define SWITCHTEC_DMA_SQ_SIZE 1024
-#define SWITCHTEC_DMA_CQ_SIZE 1024
+#define SWITCHTEC_DMA_SQ_SIZE SZ_32K
+#define SWITCHTEC_DMA_CQ_SIZE SZ_32K
 
 #define SWITCHTEC_DMA_RING_SIZE SWITCHTEC_DMA_SQ_SIZE
 
