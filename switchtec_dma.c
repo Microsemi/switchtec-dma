@@ -300,6 +300,7 @@ struct switchtec_dma_desc {
 	struct switchtec_dma_hw_se_desc *hw;
 	u32 index;
 	u32 orig_size;
+	bool completed;
 };
 void __iomem *global_bar;
 #if 0
@@ -428,10 +429,11 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 {
 	struct device *chan_dev = to_chan_dev(swdma_chan);
 	struct dmaengine_result res;
-	struct switchtec_dma_desc *desc;
+	struct switchtec_dma_desc *desc, *cur_desc;
 	static struct switchtec_dma_hw_ce *ce;
 	u16 cq_head;
 	int cid;
+	int se_idx;
 	int cnt = 0;
 	int i = 0;
 	int *p;
@@ -439,17 +441,18 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	spin_lock_bh(&swdma_chan->ring_lock);
 
 	cq_head = readw(&swdma_chan->mmio_chan_fw->cq_current);
+	dev_dbg(chan_dev, "cq_head is %x\n", cq_head);
 	while ((cnt = CIRC_CNT(cq_head, swdma_chan->cq_tail,
 			       SWITCHTEC_DMA_CQ_SIZE)) >= 1) {
-		/* should get the desc with cid? */
-		desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->tail);
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
-		cid = ce->cid;
+		cid = le16_to_cpu(ce->cid);
+		se_idx = cid & (SWITCHTEC_DMA_SQ_SIZE - 1);
+		desc = switchtec_dma_get_desc(swdma_chan, se_idx);
+		cur_desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->tail);
 
-		if (cid != desc->hw->cid)
-			dev_emerg(chan_dev,
-				  "CE cid 0x%x != desc->hw->cid 0x%x !!\n",
-				  cid, desc->hw->cid);
+		dev_dbg(to_chan_dev(swdma_chan),
+			"ooo_dbg: current CE (cid: %x, cookie: %x)",
+			cid, desc->txd.cookie);
 
 		res.residue = desc->orig_size - ce->cpl_byte_cnt;
 		p = (int *)ce;
@@ -478,19 +481,39 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			res.result = DMA_TRANS_WRITE_FAILED;
 		}
 
-		dma_cookie_complete(&desc->txd);
-		dma_descriptor_unmap(&desc->txd);
-		dmaengine_desc_get_callback_invoke(&desc->txd, &res);
-		desc->txd.callback = NULL;
-		desc->txd.callback_result = NULL;
+		desc->completed = true;
 
 		swdma_chan->cq_tail++;
-		if (swdma_chan->cq_tail == SWITCHTEC_DMA_CQ_SIZE)
-			swdma_chan->cq_tail = 0;
+		swdma_chan->cq_tail &= SWITCHTEC_DMA_CQ_SIZE - 1;
 		writew(swdma_chan->cq_tail, &swdma_chan->mmio_chan_hw->cq_head);
-		swdma_chan->tail++;
-		if (swdma_chan->tail == SWITCHTEC_DMA_SQ_SIZE)
-			swdma_chan->tail = 0;
+
+		if (se_idx != swdma_chan->tail) {
+			dev_dbg(to_chan_dev(swdma_chan),
+				"ooo_dbg: out of order CE! current CE (cid: %x), current SE (cid: %x)",
+				cid, le16_to_cpu(cur_desc->hw->cid));
+			continue;
+		}
+
+		do {
+			dma_cookie_complete(&desc->txd);
+			dma_descriptor_unmap(&desc->txd);
+			dmaengine_desc_get_callback_invoke(&desc->txd, &res);
+			desc->txd.callback = NULL;
+			desc->txd.callback_result = NULL;
+			desc->completed = false;
+
+			swdma_chan->tail++;
+			swdma_chan->tail &= SWITCHTEC_DMA_SQ_SIZE - 1;
+			desc = switchtec_dma_get_desc(swdma_chan,
+						      swdma_chan->tail);
+			if (!desc->completed)
+				break;
+		} while (CIRC_CNT(swdma_chan->head, swdma_chan->tail,
+				  SWITCHTEC_DMA_SQ_SIZE));
+
+		dev_dbg(to_chan_dev(swdma_chan), "ooo_dbg: next SE (cid: %x)",
+			le16_to_cpu(desc->hw->cid));
+
 	}
 	spin_unlock_bh(&swdma_chan->ring_lock);
 }
@@ -606,6 +629,7 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 
 	desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->head);
 
+	desc->completed = false;
 	desc->hw->opc = SWITCHTEC_DMA_OPC_MEMCPY;
 	desc->hw->daddr_lo = cpu_to_le32(lower_32_bits(dma_dst));
 	desc->hw->daddr_hi = cpu_to_le32(upper_32_bits(dma_dst));
@@ -613,9 +637,8 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 	desc->hw->saddr_widata_hi = cpu_to_le32(upper_32_bits(dma_src));
 	desc->hw->byte_cnt = cpu_to_le32(len);
 	desc->hw->tlp_setting = 0;
-	swdma_chan->cid++;
 	swdma_chan->cid &= SWITCHTEC_SE_CID_MASK;
-	desc->hw->cid = cpu_to_le16(swdma_chan->cid);
+	desc->hw->cid = cpu_to_le16(swdma_chan->cid++);
 	desc->index = swdma_chan->head;
 
 	dev_dbg(chan_dev, "SE SADDR : 0x%08x_%08x\n",
@@ -664,6 +687,8 @@ static dma_cookie_t switchtec_dma_tx_submit(
 
 	cookie = dma_cookie_assign(desc);
 
+	dev_dbg(to_chan_dev(swdma_chan), "ooo_dbg: submit SE (cookie: %x)\n", cookie);
+
 	spin_unlock_bh(&swdma_chan->ring_lock);
 
 	return cookie;
@@ -711,6 +736,8 @@ static void switchtec_dma_issue_pending(struct dma_chan *chan)
 	dev_dbg(to_chan_dev(swdma_chan), "HEAD 0x%x\n", swdma_chan->head);
 
 	writew(swdma_chan->head, &swdma_chan->mmio_chan_hw->sq_tail);
+	dev_dbg(to_chan_dev(swdma_chan),
+		"Update SE HEAD 0x%x to firmware.\n", swdma_chan->head);
 	rcu_read_unlock();
 }
 
@@ -841,6 +868,7 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 		dma_async_tx_descriptor_init(&desc->txd, &swdma_chan->dma_chan);
 		desc->txd.tx_submit = switchtec_dma_tx_submit;
 		desc->hw = &swdma_chan->hw_sq[i];
+		desc->completed = true;
 
 		swdma_chan->desc_ring[i] = desc;
 	}
