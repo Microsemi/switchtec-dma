@@ -45,8 +45,8 @@ struct dmac_capability_regs {
 	u32 rsvd;
 	u32 cplt_tmo;
 	u32 tag_limit;
-	u16 chan_err_vec;
 	u16 chan_sts_vec;
+	u16 chan_err_vec;
 	u16 se_buf_cnt;
 	u16 se_buf_base;
 } __packed;
