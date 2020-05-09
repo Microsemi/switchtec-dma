@@ -46,7 +46,7 @@ struct dmac_capability_regs {
 	u32 cplt_tmo;
 	u32 tag_limit;
 	u16 chan_sts_vec;
-	u16 chan_err_vec;
+	u16 int_err_vec;
 	u16 se_buf_cnt;
 	u16 se_buf_base;
 } __packed;
@@ -211,7 +211,7 @@ struct switchtec_dma_dev {
 	struct switchtec_dma_chan **swdma_chans;
 	int chan_cnt;
 
-	int chan_error_irq;
+	int int_error_irq;
 	int chan_status_irq;
 
 	struct dmac_version_regs __iomem *mmio_dmac_ver;
@@ -221,7 +221,7 @@ struct switchtec_dma_dev {
 	void __iomem *mmio_chan_hw_all;
 	void __iomem *mmio_chan_fw_all;
 
-	struct tasklet_struct chan_error_task;
+	struct tasklet_struct int_error_task;
 	struct tasklet_struct chan_status_task;
 
 	struct kref ref;
@@ -595,7 +595,7 @@ static void switchtec_dma_desc_task(unsigned long data)
 	switchtec_dma_process_desc(swdma_chan);
 }
 
-static void switchtec_dma_chan_error_task(unsigned long data)
+static void switchtec_dma_int_error_task(unsigned long data)
 {
 //	struct switchtec_dma_dev *swdma_dev = (void *)data;
 }
@@ -818,11 +818,11 @@ static irqreturn_t switchtec_dma_isr(int irq, void *chan)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t switchtec_dma_chan_error_isr(int irq, void *dma)
+static irqreturn_t switchtec_dma_int_error_isr(int irq, void *dma)
 {
 	struct switchtec_dma_dev *swdma_dev = dma;
 
-	tasklet_schedule(&swdma_dev->chan_error_task);
+	tasklet_schedule(&swdma_dev->int_error_task);
 
 	return IRQ_HANDLED;
 }
@@ -1871,8 +1871,8 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 		goto err_exit;
 	}
 
-	irq = readw(&swdma_dev->mmio_dmac_cap->chan_err_vec);
-	dev_dbg(dev, "Channel error irq vec 0x%x\n", irq);
+	irq = readw(&swdma_dev->mmio_dmac_cap->int_err_vec);
+	dev_dbg(dev, "Internal error irq vec 0x%x\n", irq);
 
 	irq = pci_irq_vector(swdma_dev->pdev, irq);
 	if (irq < 0) {
@@ -1880,12 +1880,12 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 		goto err_exit;
 	}
 
-	rc = devm_request_irq(dev, irq, switchtec_dma_chan_error_isr, 0,
+	rc = devm_request_irq(dev, irq, switchtec_dma_int_error_isr, 0,
 			      KBUILD_MODNAME, swdma_dev);
 	if (rc)
 		goto err_exit;
 
-	swdma_dev->chan_error_irq = irq;
+	swdma_dev->int_error_irq = irq;
 
 	irq = readw(&swdma_dev->mmio_dmac_cap->chan_sts_vec);
 	dev_dbg(dev, "Channel status irq vec 0x%x\n", irq);
@@ -1934,8 +1934,8 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 	kref_init(&swdma_dev->ref);
 	INIT_WORK(&swdma_dev->release_work, switchtec_dma_release_work);
 
-	tasklet_init(&swdma_dev->chan_error_task,
-		     switchtec_dma_chan_error_task,
+	tasklet_init(&swdma_dev->int_error_task,
+		     switchtec_dma_int_error_task,
 		     (unsigned long)swdma_dev);
 
 	tasklet_init(&swdma_dev->chan_status_task,
@@ -1966,8 +1966,8 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 	return 0;
 
 err_exit:
-	if (swdma_dev->chan_error_irq)
-		devm_free_irq(dev, swdma_dev->chan_error_irq, swdma_dev);
+	if (swdma_dev->int_error_irq)
+		devm_free_irq(dev, swdma_dev->int_error_irq, swdma_dev);
 
 	if (swdma_dev->chan_status_irq)
 		devm_free_irq(dev, swdma_dev->chan_status_irq, swdma_dev);
@@ -2022,13 +2022,13 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 
 	switchtec_dma_chans_release(swdma_dev);
 
-	tasklet_kill(&swdma_dev->chan_error_task);
+	tasklet_kill(&swdma_dev->int_error_task);
 	tasklet_kill(&swdma_dev->chan_status_task);
 
 	rcu_assign_pointer(swdma_dev->pdev, NULL);
 	synchronize_rcu();
 
-	devm_free_irq(dev, swdma_dev->chan_error_irq, swdma_dev);
+	devm_free_irq(dev, swdma_dev->int_error_irq, swdma_dev);
 	devm_free_irq(dev, swdma_dev->chan_status_irq, swdma_dev);
 
 	pci_free_irq_vectors(pdev);
