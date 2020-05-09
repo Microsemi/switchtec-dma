@@ -57,8 +57,8 @@ struct dmac_status_regs {
 	u32 chan_halt_sum_lo;
 	u32 chan_halt_sum_hi;
 	u32 rsvd[2];
-	u32 chan_paused_sum_lo;
-	u32 chan_paused_sum_hi;
+	u32 chan_pause_sum_lo;
+	u32 chan_pause_sum_hi;
 } __packed;
 
 struct dmac_control_regs {
@@ -602,7 +602,33 @@ static void switchtec_dma_int_error_task(unsigned long data)
 
 static void switchtec_dma_chan_status_task(unsigned long data)
 {
-//	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	struct switchtec_dma_chan *swdma_chan;
+	u64 halt_sum;
+	u64 pause_sum;
+	unsigned long i;
+
+	halt_sum = readl(&swdma_dev->mmio_dmac_status->chan_halt_sum_hi);
+	halt_sum <<= 32;
+	halt_sum |= readl(&swdma_dev->mmio_dmac_status->chan_halt_sum_lo);
+
+	while (halt_sum) {
+		i = __ffs(halt_sum);
+		swdma_chan = swdma_dev->swdma_chans[i];
+		dev_info(&swdma_dev->pdev->dev, "chan %ld: halted", i);
+		clear_bit(i, (void *)&halt_sum);
+	}
+
+	pause_sum = readl(&swdma_dev->mmio_dmac_status->chan_pause_sum_hi);
+	pause_sum <<= 32;
+	pause_sum |= readl(&swdma_dev->mmio_dmac_status->chan_pause_sum_lo);
+
+	while (pause_sum) {
+		i = __ffs(pause_sum);
+		swdma_chan = swdma_dev->swdma_chans[i];
+		dev_info(&swdma_dev->pdev->dev, "chan %ld: paused", i);
+		clear_bit(i, (void *)&pause_sum);
+	}
 }
 
 static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
