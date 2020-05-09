@@ -1880,6 +1880,14 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 		goto err_exit;
 	}
 
+	tasklet_init(&swdma_dev->int_error_task,
+		     switchtec_dma_int_error_task,
+		     (unsigned long)swdma_dev);
+
+	tasklet_init(&swdma_dev->chan_status_task,
+		     switchtec_dma_chan_status_task,
+		     (unsigned long)swdma_dev);
+
 	rc = devm_request_irq(dev, irq, switchtec_dma_int_error_isr, 0,
 			      KBUILD_MODNAME, swdma_dev);
 	if (rc)
@@ -1933,14 +1941,6 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 
 	kref_init(&swdma_dev->ref);
 	INIT_WORK(&swdma_dev->release_work, switchtec_dma_release_work);
-
-	tasklet_init(&swdma_dev->int_error_task,
-		     switchtec_dma_int_error_task,
-		     (unsigned long)swdma_dev);
-
-	tasklet_init(&swdma_dev->chan_status_task,
-		     switchtec_dma_chan_status_task,
-		     (unsigned long)swdma_dev);
 
 	dma->device_alloc_chan_resources = switchtec_dma_alloc_chan_resources;
 	dma->device_free_chan_resources = switchtec_dma_free_chan_resources;
