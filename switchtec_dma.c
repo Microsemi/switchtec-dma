@@ -45,8 +45,8 @@ struct dmac_capability_regs {
 	u32 rsvd;
 	u32 cplt_tmo;
 	u32 tag_limit;
-	u16 chan_err_vec;
 	u16 chan_sts_vec;
+	u16 int_err_vec;
 	u16 se_buf_cnt;
 	u16 se_buf_base;
 } __packed;
@@ -57,9 +57,16 @@ struct dmac_status_regs {
 	u32 chan_halt_sum_lo;
 	u32 chan_halt_sum_hi;
 	u32 rsvd[2];
-	u32 chan_paused_sum_lo;
-	u32 chan_paused_sum_hi;
+	u32 chan_pause_sum_lo;
+	u32 chan_pause_sum_hi;
 } __packed;
+
+#define IER_OB_PF_RD_ERR_I  BIT(14)
+#define IER_OB_TLP_RD_ERR_I BIT(15)
+#define IER_ECC_ER_0_I      BIT(20)
+#define IER_ECC_ER_1_I      BIT(21)
+#define IER_PARITY_ERR_I    BIT(22)
+#define IER_IB_IER_I        BIT(23)
 
 struct dmac_control_regs {
 	u32 reset_halt;
@@ -211,7 +218,7 @@ struct switchtec_dma_dev {
 	struct switchtec_dma_chan **swdma_chans;
 	int chan_cnt;
 
-	int chan_error_irq;
+	int int_error_irq;
 	int chan_status_irq;
 
 	struct dmac_version_regs __iomem *mmio_dmac_ver;
@@ -221,7 +228,7 @@ struct switchtec_dma_dev {
 	void __iomem *mmio_chan_hw_all;
 	void __iomem *mmio_chan_fw_all;
 
-	struct tasklet_struct chan_error_task;
+	struct tasklet_struct int_error_task;
 	struct tasklet_struct chan_status_task;
 
 	struct kref ref;
@@ -595,14 +602,62 @@ static void switchtec_dma_desc_task(unsigned long data)
 	switchtec_dma_process_desc(swdma_chan);
 }
 
-static void switchtec_dma_chan_error_task(unsigned long data)
+static void switchtec_dma_int_error_task(unsigned long data)
 {
-//	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	u32 err;
+
+	err = readl(&swdma_dev->mmio_dmac_status->internal_err);
+
+	if (err & IER_OB_PF_RD_ERR_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Inbound Buffer received a TLP flagged with IER.");
+	if (err & IER_OB_TLP_RD_ERR_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Outbound TLP read error (ECC error).");
+	if (err & IER_ECC_ER_0_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Uncorrectable ECC error interrupt from RAMs in ECC_ERR_RAM_SEL_0.");
+	if (err & IER_ECC_ER_1_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Uncorrectable ECC error interrupt from RAMs in ECC_ERR_RAM_SEL_1.");
+	if (err & IER_PARITY_ERR_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Uncorrectable parity error interrupt from ISP_DMAC.");
+	if (err & IER_IB_IER_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Inbound Buffer received a TLP flagged with IER.");
 }
 
 static void switchtec_dma_chan_status_task(unsigned long data)
 {
-//	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	struct switchtec_dma_chan *swdma_chan;
+	u64 halt_sum;
+	u64 pause_sum;
+	unsigned long i;
+
+	halt_sum = readl(&swdma_dev->mmio_dmac_status->chan_halt_sum_hi);
+	halt_sum <<= 32;
+	halt_sum |= readl(&swdma_dev->mmio_dmac_status->chan_halt_sum_lo);
+
+	while (halt_sum) {
+		i = __ffs(halt_sum);
+		swdma_chan = swdma_dev->swdma_chans[i];
+		dev_info(&swdma_dev->pdev->dev, "chan %ld: halted", i);
+		clear_bit(i, (void *)&halt_sum);
+	}
+
+	pause_sum = readl(&swdma_dev->mmio_dmac_status->chan_pause_sum_hi);
+	pause_sum <<= 32;
+	pause_sum |= readl(&swdma_dev->mmio_dmac_status->chan_pause_sum_lo);
+
+	while (pause_sum) {
+		i = __ffs(pause_sum);
+		swdma_chan = swdma_dev->swdma_chans[i];
+		dev_info(&swdma_dev->pdev->dev, "chan %ld: paused", i);
+		clear_bit(i, (void *)&pause_sum);
+	}
 }
 
 static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
@@ -818,11 +873,11 @@ static irqreturn_t switchtec_dma_isr(int irq, void *chan)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t switchtec_dma_chan_error_isr(int irq, void *dma)
+static irqreturn_t switchtec_dma_int_error_isr(int irq, void *dma)
 {
 	struct switchtec_dma_dev *swdma_dev = dma;
 
-	tasklet_schedule(&swdma_dev->chan_error_task);
+	tasklet_schedule(&swdma_dev->int_error_task);
 
 	return IRQ_HANDLED;
 }
@@ -1871,8 +1926,8 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 		goto err_exit;
 	}
 
-	irq = readw(&swdma_dev->mmio_dmac_cap->chan_err_vec);
-	dev_dbg(dev, "Channel error irq vec 0x%x\n", irq);
+	irq = readw(&swdma_dev->mmio_dmac_cap->int_err_vec);
+	dev_dbg(dev, "Internal error irq vec 0x%x\n", irq);
 
 	irq = pci_irq_vector(swdma_dev->pdev, irq);
 	if (irq < 0) {
@@ -1880,12 +1935,20 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 		goto err_exit;
 	}
 
-	rc = devm_request_irq(dev, irq, switchtec_dma_chan_error_isr, 0,
+	tasklet_init(&swdma_dev->int_error_task,
+		     switchtec_dma_int_error_task,
+		     (unsigned long)swdma_dev);
+
+	tasklet_init(&swdma_dev->chan_status_task,
+		     switchtec_dma_chan_status_task,
+		     (unsigned long)swdma_dev);
+
+	rc = devm_request_irq(dev, irq, switchtec_dma_int_error_isr, 0,
 			      KBUILD_MODNAME, swdma_dev);
 	if (rc)
 		goto err_exit;
 
-	swdma_dev->chan_error_irq = irq;
+	swdma_dev->int_error_irq = irq;
 
 	irq = readw(&swdma_dev->mmio_dmac_cap->chan_sts_vec);
 	dev_dbg(dev, "Channel status irq vec 0x%x\n", irq);
@@ -1934,14 +1997,6 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 	kref_init(&swdma_dev->ref);
 	INIT_WORK(&swdma_dev->release_work, switchtec_dma_release_work);
 
-	tasklet_init(&swdma_dev->chan_error_task,
-		     switchtec_dma_chan_error_task,
-		     (unsigned long)swdma_dev);
-
-	tasklet_init(&swdma_dev->chan_status_task,
-		     switchtec_dma_chan_status_task,
-		     (unsigned long)swdma_dev);
-
 	dma->device_alloc_chan_resources = switchtec_dma_alloc_chan_resources;
 	dma->device_free_chan_resources = switchtec_dma_free_chan_resources;
 	dma->device_prep_dma_memcpy = switchtec_dma_prep_memcpy;
@@ -1966,8 +2021,8 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 	return 0;
 
 err_exit:
-	if (swdma_dev->chan_error_irq)
-		devm_free_irq(dev, swdma_dev->chan_error_irq, swdma_dev);
+	if (swdma_dev->int_error_irq)
+		devm_free_irq(dev, swdma_dev->int_error_irq, swdma_dev);
 
 	if (swdma_dev->chan_status_irq)
 		devm_free_irq(dev, swdma_dev->chan_status_irq, swdma_dev);
@@ -2022,13 +2077,13 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 
 	switchtec_dma_chans_release(swdma_dev);
 
-	tasklet_kill(&swdma_dev->chan_error_task);
+	tasklet_kill(&swdma_dev->int_error_task);
 	tasklet_kill(&swdma_dev->chan_status_task);
 
 	rcu_assign_pointer(swdma_dev->pdev, NULL);
 	synchronize_rcu();
 
-	devm_free_irq(dev, swdma_dev->chan_error_irq, swdma_dev);
+	devm_free_irq(dev, swdma_dev->int_error_irq, swdma_dev);
 	devm_free_irq(dev, swdma_dev->chan_status_irq, swdma_dev);
 
 	pci_free_irq_vectors(pdev);
