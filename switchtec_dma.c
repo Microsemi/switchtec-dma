@@ -150,8 +150,8 @@ struct chan_fw_regs {
 	u32 perf_byte_cnt_hi;
 	u32 rsvd2;
 	u16 perf_se_pending;
-	u16 perf_se_queue_empty;
-	u32 perf_idle_ratio;
+	u16 perf_se_buf_empty;
+	u32 perf_chan_idle;
 	u32 perf_lat_max;
 	u32 perf_lat_min;
 	u32 perf_lat_last;
@@ -1494,7 +1494,7 @@ err_unlock:
 
 struct switchtec_sysfs_entry mrrs_attr = __ATTR_RW(mrrs);
 
-static ssize_t fetched_se_count_show(struct dma_chan *chan, char *page)
+static ssize_t se_count_show(struct dma_chan *chan, char *page)
 {
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
@@ -1507,7 +1507,7 @@ static ssize_t fetched_se_count_show(struct dma_chan *chan, char *page)
 	return sprintf(page, "0x%llx\n", count);
 }
 
-struct switchtec_sysfs_entry fetched_se_count_attr = __ATTR_RO(fetched_se_count);
+struct switchtec_sysfs_entry se_count_attr = __ATTR_RO(se_count);
 
 static ssize_t byte_count_show(struct dma_chan *chan, char *page)
 {
@@ -1537,31 +1537,31 @@ static ssize_t se_pending_show(struct dma_chan *chan, char *page)
 
 struct switchtec_sysfs_entry se_pending_attr = __ATTR_RO(se_pending);
 
-static ssize_t se_queue_empty_show(struct dma_chan *chan, char *page)
+static ssize_t se_buf_empty_show(struct dma_chan *chan, char *page)
 {
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u16 count = 0;
 
-	count = le16_to_cpu(readl(&chan_fw->perf_se_queue_empty));
+	count = le16_to_cpu(readl(&chan_fw->perf_se_buf_empty));
 
 	return sprintf(page, "0x%x\n", count);
 }
 
-struct switchtec_sysfs_entry se_queue_empty_attr = __ATTR_RO(se_queue_empty);
+struct switchtec_sysfs_entry se_buf_empty_attr = __ATTR_RO(se_buf_empty);
 
-static ssize_t idle_ratio_show(struct dma_chan *chan, char *page)
+static ssize_t chan_idle_show(struct dma_chan *chan, char *page)
 {
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 ratio = 0;
 
-	ratio = le32_to_cpu(readl(&chan_fw->perf_idle_ratio));
+	ratio = le32_to_cpu(readl(&chan_fw->perf_chan_idle));
 
 	return sprintf(page, "0x%x\n", ratio);
 }
 
-struct switchtec_sysfs_entry idle_ratio_attr = __ATTR_RO(idle_ratio);
+struct switchtec_sysfs_entry chan_idle_attr = __ATTR_RO(chan_idle);
 
 static ssize_t latency_max_show(struct dma_chan *chan, char *page)
 {
@@ -1769,11 +1769,11 @@ const struct sysfs_ops switchtec_pmon_sysfs_ops = {
 
 
 static struct attribute *switchtec_pmon_attrs[] = {
-	&fetched_se_count_attr.attr,
+	&se_count_attr.attr,
 	&byte_count_attr.attr,
 	&se_pending_attr.attr,
-	&se_queue_empty_attr.attr,
-	&idle_ratio_attr.attr,
+	&se_buf_empty_attr.attr,
+	&chan_idle_attr.attr,
 	&latency_max_attr.attr,
 	&latency_min_attr.attr,
 	&latency_last_attr.attr,
