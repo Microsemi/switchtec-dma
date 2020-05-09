@@ -61,6 +61,13 @@ struct dmac_status_regs {
 	u32 chan_pause_sum_hi;
 } __packed;
 
+#define IER_OB_PF_RD_ERR_I  BIT(14)
+#define IER_OB_TLP_RD_ERR_I BIT(15)
+#define IER_ECC_ER_0_I      BIT(20)
+#define IER_ECC_ER_1_I      BIT(21)
+#define IER_PARITY_ERR_I    BIT(22)
+#define IER_IB_IER_I        BIT(23)
+
 struct dmac_control_regs {
 	u32 reset_halt;
 } __packed;
@@ -597,7 +604,29 @@ static void switchtec_dma_desc_task(unsigned long data)
 
 static void switchtec_dma_int_error_task(unsigned long data)
 {
-//	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	u32 err;
+
+	err = readl(&swdma_dev->mmio_dmac_status->internal_err);
+
+	if (err & IER_OB_PF_RD_ERR_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Inbound Buffer received a TLP flagged with IER.");
+	if (err & IER_OB_TLP_RD_ERR_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Outbound TLP read error (ECC error).");
+	if (err & IER_ECC_ER_0_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Uncorrectable ECC error interrupt from RAMs in ECC_ERR_RAM_SEL_0.");
+	if (err & IER_ECC_ER_1_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Uncorrectable ECC error interrupt from RAMs in ECC_ERR_RAM_SEL_1.");
+	if (err & IER_PARITY_ERR_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Uncorrectable parity error interrupt from ISP_DMAC.");
+	if (err & IER_IB_IER_I)
+		dev_err(&swdma_dev->pdev->dev,
+			"IER: Inbound Buffer received a TLP flagged with IER.");
 }
 
 static void switchtec_dma_chan_status_task(unsigned long data)
