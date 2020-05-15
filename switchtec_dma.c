@@ -198,12 +198,12 @@ struct switchtec_dma_chan {
 	/* the head and tail for both desc_ring and hw_sq */
 	int head;
 	int tail;
+	int phase_tag;
 	struct switchtec_dma_desc **desc_ring;
 	struct switchtec_dma_hw_se_desc *hw_sq;
 	dma_addr_t dma_addr_sq;
 
-	/* the head and tail for both hw_cq */
-	int cq_head;
+	/* the tail for hw_cq */
 	int cq_tail;
 	struct switchtec_dma_hw_ce *hw_cq;
 	dma_addr_t dma_addr_cq;
@@ -438,20 +438,18 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	struct dmaengine_result res;
 	struct switchtec_dma_desc *desc, *cur_desc;
 	static struct switchtec_dma_hw_ce *ce;
-	u16 cq_head;
 	int cid;
 	int se_idx;
-	int cnt = 0;
 	int i = 0;
 	int *p;
 
 	spin_lock_bh(&swdma_chan->ring_lock);
 
-	cq_head = readw(&swdma_chan->mmio_chan_fw->cq_current);
-	dev_dbg(chan_dev, "cq_head is %x\n", cq_head);
-	while ((cnt = CIRC_CNT(cq_head, swdma_chan->cq_tail,
-			       SWITCHTEC_DMA_CQ_SIZE)) >= 1) {
+	do {
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
+		if (ce->phase_tag == swdma_chan->phase_tag)
+			break;
+
 		cid = le16_to_cpu(ce->cid);
 		se_idx = cid & (SWITCHTEC_DMA_SQ_SIZE - 1);
 		desc = switchtec_dma_get_desc(swdma_chan, se_idx);
@@ -494,6 +492,9 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 		swdma_chan->cq_tail &= SWITCHTEC_DMA_CQ_SIZE - 1;
 		writew(swdma_chan->cq_tail, &swdma_chan->mmio_chan_hw->cq_head);
 
+		if (swdma_chan->cq_tail == 0)
+			swdma_chan->phase_tag = !swdma_chan->phase_tag;
+
 		if (se_idx != swdma_chan->tail) {
 			dev_dbg(to_chan_dev(swdma_chan),
 				"ooo_dbg: out of order CE! current CE (cid: %x), current SE (cid: %x)",
@@ -521,7 +522,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 		dev_dbg(to_chan_dev(swdma_chan), "ooo_dbg: next SE (cid: %x)",
 			le16_to_cpu(desc->hw->cid));
 
-	}
+	} while (1);
 	spin_unlock_bh(&swdma_chan->ring_lock);
 }
 
@@ -958,7 +959,7 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 	int i;
 
 	swdma_chan->head = swdma_chan->tail = 0;
-	swdma_chan->cq_head = swdma_chan->cq_tail = 0;
+	swdma_chan->cq_tail = 0;
 
 	size = SWITCHTEC_DMA_SQ_SIZE * sizeof(*swdma_chan->hw_sq);
 	swdma_chan->hw_sq = dmam_alloc_coherent(&swdma_dev->pdev->dev, size,
@@ -973,6 +974,7 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 						GFP_KERNEL);
 	if (!swdma_chan->hw_cq)
 		goto free_and_exit;
+	memset(swdma_chan->hw_cq, 0, size);
 
 	size = sizeof(*swdma_chan->desc_ring);
 	swdma_chan->desc_ring = kcalloc(SWITCHTEC_DMA_RING_SIZE,
@@ -1132,6 +1134,7 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 	if (!swdma_chan)
 		return -ENOMEM;
 
+	swdma_chan->phase_tag = 0;
 	swdma_chan->index = i;
 
 	offset =  i * SWITCHTEC_DMA_CHAN_FW_REGS_SIZE;
