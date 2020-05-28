@@ -228,6 +228,7 @@ struct switchtec_dma_dev {
 	int int_error_irq;
 	int chan_status_irq;
 
+	void __iomem *bar;
 	struct dmac_version_regs __iomem *mmio_dmac_ver;
 	struct dmac_capability_regs __iomem *mmio_dmac_cap;
 	struct dmac_status_regs __iomem *mmio_dmac_status;
@@ -320,7 +321,6 @@ struct switchtec_dma_desc {
 	u32 orig_size;
 	bool completed;
 };
-void __iomem *global_bar;
 #if 0
 static struct switchtec_dma_desc *to_switchtec_desc(
 		struct dma_async_tx_descriptor *txd)
@@ -1922,7 +1922,7 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 		return -ENOMEM;
 
 	bar = pcim_iomap_table(pdev)[0];
-	global_bar = bar;
+	swdma_dev->bar = bar;
 
 	swdma_dev->mmio_dmac_ver = bar + SWITCHTEC_DMAC_VERSION_OFFSET;
 	swdma_dev->mmio_dmac_cap = bar + SWITCHTEC_DMAC_CAPABILITY_OFFSET;
