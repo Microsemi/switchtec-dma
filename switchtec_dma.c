@@ -173,6 +173,9 @@ struct chan_fw_regs {
 #define SWITCHTEC_CHAN_BURST_SCALE 1
 #define SWITCHTEC_CHAN_MRRS 1
 
+static LIST_HEAD(chan_list);
+static LIST_HEAD(dma_list);
+
 struct switchtec_dma_chan {
 	struct switchtec_dma_dev *swdma_dev;
 	struct dma_chan dma_chan;
@@ -212,6 +215,8 @@ struct switchtec_dma_chan {
 	struct kobject pmon_kobj;
 
 	bool is_fabric;
+
+	struct list_head list;
 };
 
 struct switchtec_dma_dev {
@@ -237,6 +242,8 @@ struct switchtec_dma_dev {
 
 	struct kref ref;
 	struct work_struct release_work;
+
+	struct list_head list;
 };
 
 static struct switchtec_dma_chan *to_switchtec_dma_chan(struct dma_chan *c)
@@ -1207,6 +1214,7 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 	list_add_tail(&chan->device_node, &dma->channels);
 
 	swdma_chan->is_fabric = swdma_dev->is_fabric;
+	list_add_tail(&swdma_chan->list, &chan_list);
 	swdma_chan->initialized = 1;
 
 	return 0;
@@ -2023,6 +2031,8 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	pci_set_drvdata(pdev, swdma_dev);
 
 	switchtec_kobject_add(swdma_dev);
+
+	list_add_tail(&swdma_dev->list, &dma_list);
 
 	return 0;
 
