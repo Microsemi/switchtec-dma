@@ -210,6 +210,8 @@ struct switchtec_dma_chan {
 
 	struct kobject config_kobj;
 	struct kobject pmon_kobj;
+
+	bool is_fabric;
 };
 
 struct switchtec_dma_dev {
@@ -230,6 +232,8 @@ struct switchtec_dma_dev {
 
 	struct tasklet_struct int_error_task;
 	struct tasklet_struct chan_status_task;
+
+	bool is_fabric;
 
 	struct kref ref;
 	struct work_struct release_work;
@@ -1202,6 +1206,7 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 	dma_cookie_init(chan);
 	list_add_tail(&chan->device_node, &dma->channels);
 
+	swdma_chan->is_fabric = swdma_dev->is_fabric;
 	swdma_chan->initialized = 1;
 
 	return 0;
@@ -1889,7 +1894,7 @@ void switchtec_chan_kobject_del(struct switchtec_dma_chan *swdma_chan)
 	}
 }
 
-static int switchtec_dma_create(struct pci_dev *pdev)
+static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 {
 	struct switchtec_dma_dev *swdma_dev;
 	struct dma_device *dma;
@@ -1986,6 +1991,7 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 	}
 
 	swdma_dev->chan_cnt = chan_cnt;
+	swdma_dev->is_fabric = is_fabric;
 
 	dma = &swdma_dev->dma_dev;
 	pci_info(pdev, "chan count: %d\n", dma->chancnt);
@@ -2057,7 +2063,7 @@ static int switchtec_dma_probe(struct pci_dev *pdev,
 
 	pci_set_master(pdev);
 
-	rc = switchtec_dma_create(pdev);
+	rc = switchtec_dma_create(pdev, id->driver_data);
 	if (rc)
 		goto err_free_irq_vectors;
 
@@ -2100,7 +2106,7 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 
 #define MICROSEMI_VENDOR_ID 0x11f8
 
-#define SWITCHTEC_PCI_DEVICE(device_id) \
+#define SWITCHTEC_PCI_DEVICE(device_id, is_fabric) \
 	{ \
 		.vendor     = MICROSEMI_VENDOR_ID, \
 		.device     = device_id, \
@@ -2108,27 +2114,28 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 		.subdevice  = PCI_ANY_ID, \
 		.class      = PCI_CLASS_SYSTEM_OTHER << 8, \
 		.class_mask = 0xFFFFFFFF, \
+		.driver_data = is_fabric, \
 	}
 
 static const struct pci_device_id switchtec_dma_pci_tbl[] = {
-	SWITCHTEC_PCI_DEVICE(0x4000),  //PFX 100XG4
-	SWITCHTEC_PCI_DEVICE(0x4084),  //PFX 84XG4
-	SWITCHTEC_PCI_DEVICE(0x4068),  //PFX 68XG4
-	SWITCHTEC_PCI_DEVICE(0x4052),  //PFX 52XG4
-	SWITCHTEC_PCI_DEVICE(0x4036),  //PFX 36XG4
-	SWITCHTEC_PCI_DEVICE(0x4028),  //PFX 28XG4
-	SWITCHTEC_PCI_DEVICE(0x4100),  //PSX 100XG4
-	SWITCHTEC_PCI_DEVICE(0x4184),  //PSX 84XG4
-	SWITCHTEC_PCI_DEVICE(0x4168),  //PSX 68XG4
-	SWITCHTEC_PCI_DEVICE(0x4152),  //PSX 52XG4
-	SWITCHTEC_PCI_DEVICE(0x4136),  //PSX 36XG4
-	SWITCHTEC_PCI_DEVICE(0x4128),  //PSX 28XG4
-	SWITCHTEC_PCI_DEVICE(0x4200),  //PAX 100XG4
-	SWITCHTEC_PCI_DEVICE(0x4284),  //PAX 84XG4
-	SWITCHTEC_PCI_DEVICE(0x4268),  //PAX 68XG4
-	SWITCHTEC_PCI_DEVICE(0x4252),  //PAX 52XG4
-	SWITCHTEC_PCI_DEVICE(0x4236),  //PAX 36XG4
-	SWITCHTEC_PCI_DEVICE(0x4228),  //PAX 28XG4
+	SWITCHTEC_PCI_DEVICE(0x4000, 0),  //PFX 100XG4
+	SWITCHTEC_PCI_DEVICE(0x4084, 0),  //PFX 84XG4
+	SWITCHTEC_PCI_DEVICE(0x4068, 0),  //PFX 68XG4
+	SWITCHTEC_PCI_DEVICE(0x4052, 0),  //PFX 52XG4
+	SWITCHTEC_PCI_DEVICE(0x4036, 0),  //PFX 36XG4
+	SWITCHTEC_PCI_DEVICE(0x4028, 0),  //PFX 28XG4
+	SWITCHTEC_PCI_DEVICE(0x4100, 0),  //PSX 100XG4
+	SWITCHTEC_PCI_DEVICE(0x4184, 0),  //PSX 84XG4
+	SWITCHTEC_PCI_DEVICE(0x4168, 0),  //PSX 68XG4
+	SWITCHTEC_PCI_DEVICE(0x4152, 0),  //PSX 52XG4
+	SWITCHTEC_PCI_DEVICE(0x4136, 0),  //PSX 36XG4
+	SWITCHTEC_PCI_DEVICE(0x4128, 0),  //PSX 28XG4
+	SWITCHTEC_PCI_DEVICE(0x4200, 1),  //PAX 100XG4
+	SWITCHTEC_PCI_DEVICE(0x4284, 1),  //PAX 84XG4
+	SWITCHTEC_PCI_DEVICE(0x4268, 1),  //PAX 68XG4
+	SWITCHTEC_PCI_DEVICE(0x4252, 1),  //PAX 52XG4
+	SWITCHTEC_PCI_DEVICE(0x4236, 1),  //PAX 36XG4
+	SWITCHTEC_PCI_DEVICE(0x4228, 1),  //PAX 28XG4
 	{0}
 };
 MODULE_DEVICE_TABLE(pci, switchtec_dma_pci_tbl);
