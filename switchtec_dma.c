@@ -2058,6 +2058,52 @@ int switchtec_fabric_get_pax_count(struct dma_device *dma_dev)
 }
 EXPORT_SYMBOL(switchtec_fabric_get_pax_count);
 
+int switchtec_fabric_get_host_ports(struct dma_device *dma_dev, u8 pax_id,
+				    int port_num,
+				    struct switchtec_host_port *ports)
+{
+	struct switchtec_dma_dev *swdma_dev = to_switchtec_dma(dma_dev);
+	size_t size;
+	int rtn_port_num;
+	int i;
+	int ret;
+
+	struct {
+		u8 pax_id;
+		u8 pax_num;
+		u8 phys_pid;
+		u8 host_port_num;
+		u32 rsvd;
+		struct {
+			u16 hfid;
+			u8 phys_pid;
+			u8 link_state;
+		} host_ports[SWITCHTEC_HOST_PORT_NUM_PER_PAX];
+	} rsp;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	size = sizeof(rsp);
+	ret = execute_cmd(swdma_dev, CMD_GET_HOST_LIST, &pax_id, sizeof(pax_id),
+			  &rsp, &size);
+	if (ret < 0)
+		return ret;
+
+	rtn_port_num = port_num < rsp.host_port_num ? port_num :
+		       rsp.host_port_num;
+
+	for (i = 0; i < rtn_port_num; i++) {
+		ports[i].hfid = le16_to_cpu(rsp.host_ports[i].hfid);
+		ports[i].pax_id = rsp.pax_id;
+		ports[i].phys_pid = rsp.host_ports[i].phys_pid;
+		ports[i].link_state = rsp.host_ports[i].link_state;
+	}
+
+	return rtn_port_num;
+}
+EXPORT_SYMBOL(switchtec_fabric_get_host_ports);
+
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;
