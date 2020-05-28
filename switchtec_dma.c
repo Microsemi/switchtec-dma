@@ -29,6 +29,8 @@ enum switchtec_reg_offset {
 	SWITCHTEC_DMAC_CONTROL_OFFSET = 0x180,
 	SWITCHTEC_DMAC_CHAN_CTRL_OFFSET = 0x1000,
 	SWITCHTEC_DMAC_CHAN_CFG_STS_OFFSET = 0x160000,
+	SWITCHTEC_DMAC_FABRIC_CMD_OFFSET = 0x164000,
+	SWITCHTEC_DMAC_FABRIC_CTRL_OFFSET = 0x165000,
 };
 
 #define SWITCHTEC_DESC_MAX_SIZE 0x100000
@@ -70,6 +72,29 @@ struct dmac_status_regs {
 
 struct dmac_control_regs {
 	u32 reset_halt;
+} __packed;
+
+struct dmac_fabric_cmd_regs {
+	u32 input[256];
+	u32 rsvd1[256];
+	u16 command;
+	u16 rsvd2;
+} __packed;
+
+struct dmac_fabric_control_regs {
+	u16 cmd_vec;
+	u16 rsvd1;
+	u32 cmd_dma_addr_lo;
+	u32 cmd_dma_addr_hi;
+	u16 event_vec;
+	u16 rsvd2;
+	u32 event_dma_addr_lo;
+	u32 event_dma_addr_hi;
+	u32 event_dma_size;
+	u32 event_queue_tail;
+	u32 cmd_event_enable;
+	u16 local_hfid;
+	u16 rsvd3;
 } __packed;
 
 #define SWITCHTEC_CHAN_CTRL_PAUSE     BIT(0)
@@ -233,6 +258,8 @@ struct switchtec_dma_dev {
 	struct dmac_capability_regs __iomem *mmio_dmac_cap;
 	struct dmac_status_regs __iomem *mmio_dmac_status;
 	struct dmac_control_regs __iomem *mmio_dmac_ctrl;
+	struct dmac_fabric_cmd_regs __iomem *mmio_fabric_cmd;
+	struct dmac_fabric_control_regs __iomem *mmio_fabric_ctrl;
 	void __iomem *mmio_chan_hw_all;
 	void __iomem *mmio_chan_fw_all;
 
@@ -1901,6 +1928,18 @@ void switchtec_chan_kobject_del(struct switchtec_dma_chan *swdma_chan)
 		kobject_put(&swdma_chan->pmon_kobj);
 	}
 }
+static int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
+{
+	if (!swdma_dev->is_fabric)
+		return 0;
+
+	swdma_dev->mmio_fabric_cmd = swdma_dev->bar +
+		SWITCHTEC_DMAC_FABRIC_CMD_OFFSET;
+	swdma_dev->mmio_fabric_ctrl = swdma_dev->bar +
+		SWITCHTEC_DMAC_FABRIC_CTRL_OFFSET;
+
+	return 0;
+}
 
 static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 {
@@ -2017,6 +2056,13 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	dma->device_prep_dma_imm_data = switchtec_dma_prep_wimm_data;
 	dma->device_issue_pending = switchtec_dma_issue_pending;
 	dma->device_tx_status = switchtec_dma_tx_status;
+
+	rc = switchtec_dma_init_fabric(swdma_dev);
+	if (rc) {
+		pci_err(pdev, "Failed to init fabric DMA: %d\n", rc);
+		switchtec_dma_chans_release(swdma_dev);
+		goto err_exit;
+	}
 
 	rc = dma_async_device_register(dma);
 	if (rc) {
