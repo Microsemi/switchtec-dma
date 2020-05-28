@@ -193,6 +193,23 @@ struct chan_fw_regs {
 	u16 cq_phase;
 } __packed;
 
+enum cmd {
+	CMD_GET_HOST_LIST = 1,
+	CMD_REGISTER_BUF = 2,
+	CMD_UNREGISTER_BUF = 3,
+	CMD_GET_BUF_LIST = 4,
+	CMD_GET_OWN_BUF_LIST = 5,
+};
+
+enum cmd_status {
+	CMD_STATUS_IDLE = 0,
+	CMD_STATUS_INPROGRESS = 1,
+	CMD_STATUS_DONE = 2,
+	CMD_STATUS_ERROR = 0xFF,
+};
+
+#define CMD_TIMEOUT_MSECS 200
+
 #define SWITCHTEC_CHAN_INTERVAL 1
 #define SWITCHTEC_CHAN_BURST_SZ 1
 #define SWITCHTEC_CHAN_BURST_SCALE 1
@@ -244,6 +261,15 @@ struct switchtec_dma_chan {
 	struct list_head list;
 };
 
+#define CMD_OUTPUT_SIZE 1024
+struct cmd_output{
+	u32 status;
+	u32 cmd_id;
+	u32 rtn_val;
+	u32 output_size;
+	u8 data[CMD_OUTPUT_SIZE];
+};
+
 struct switchtec_dma_dev {
 	struct dma_device dma_dev;
 	struct pci_dev __rcu *pdev;
@@ -267,6 +293,13 @@ struct switchtec_dma_dev {
 	struct tasklet_struct chan_status_task;
 
 	bool is_fabric;
+	/*
+	 * Only one cmd can be executed at a time.
+	 */
+	struct mutex cmd_mutex;
+	struct cmd_output *cmd;
+	dma_addr_t cmd_dma_addr;
+	int cmd_irq;
 
 	struct kref ref;
 	struct work_struct release_work;
@@ -1928,8 +1961,61 @@ void switchtec_chan_kobject_del(struct switchtec_dma_chan *swdma_chan)
 		kobject_put(&swdma_chan->pmon_kobj);
 	}
 }
+
+int execute_cmd(struct switchtec_dma_dev *swdma_dev, u32 cmd,
+		const void *input, size_t input_size, void *output,
+		size_t *output_size)
+{
+	unsigned long wait_timeout;
+	enum cmd_status status;
+	size_t size;
+	int ret = 0;
+
+	mutex_lock(&swdma_dev->cmd_mutex);
+
+	swdma_dev->cmd->status = CMD_STATUS_IDLE;
+	memset(swdma_dev->cmd->data, 0xFF, CMD_OUTPUT_SIZE);
+
+	memcpy_toio(&swdma_dev->mmio_fabric_cmd->input, input, input_size);
+	iowrite32(cmd, &swdma_dev->mmio_fabric_cmd->command);
+
+	wait_timeout = jiffies + msecs_to_jiffies(CMD_TIMEOUT_MSECS);
+	do {
+		status = swdma_dev->cmd->status;
+
+		if (time_after_eq(jiffies, wait_timeout)) {
+			dev_err(&swdma_dev->pdev->dev, "CMD %d: timeout!\n",
+				cmd);
+			ret = -ETIME;
+			goto out;
+		}
+		if (status == CMD_STATUS_DONE || status == CMD_STATUS_ERROR)
+			break;
+		cpu_relax();
+	} while (1);
+
+	if (status != CMD_STATUS_DONE && status != CMD_STATUS_ERROR) {
+		ret = -EBADMSG;
+		goto out;
+	}
+
+	if (output && output_size) {
+		size = *output_size > swdma_dev->cmd->output_size ?
+		       swdma_dev->cmd->output_size : *output_size;
+		memcpy(output, swdma_dev->cmd->data, size);
+
+		*output_size = size;
+	}
+
+out:
+	mutex_unlock(&swdma_dev->cmd_mutex);
+	return ret;
+}
 static int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
+	struct device *dev = &swdma_dev->pdev->dev;
+	int rc;
+
 	if (!swdma_dev->is_fabric)
 		return 0;
 
@@ -1938,7 +2024,24 @@ static int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 	swdma_dev->mmio_fabric_ctrl = swdma_dev->bar +
 		SWITCHTEC_DMAC_FABRIC_CTRL_OFFSET;
 
+	swdma_dev->cmd = dmam_alloc_coherent(dev, sizeof(*swdma_dev->cmd),
+					     &swdma_dev->cmd_dma_addr,
+					     GFP_KERNEL);
+	if (!swdma_dev->cmd) {
+		rc = -ENOMEM;
+		goto err_exit;
+	}
+
+	writel(cpu_to_le32(lower_32_bits(swdma_dev->cmd_dma_addr)),
+	       &swdma_dev->mmio_fabric_ctrl->cmd_dma_addr_lo);
+	writel(cpu_to_le32(upper_32_bits(swdma_dev->cmd_dma_addr)),
+	       &swdma_dev->mmio_fabric_ctrl->cmd_dma_addr_hi);
+
+	mutex_init(&swdma_dev->cmd_mutex);
 	return 0;
+
+err_exit:
+	return rc;
 }
 
 static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
