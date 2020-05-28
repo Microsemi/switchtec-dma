@@ -16,6 +16,7 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 
+#include "switchtec_dma.h"
 #include "version.h"
 MODULE_DESCRIPTION("Switchtec PCIe Switch DMA Engine");
 MODULE_VERSION(VERSION);
@@ -306,6 +307,11 @@ struct switchtec_dma_dev {
 
 	struct list_head list;
 };
+
+static struct switchtec_dma_dev *to_switchtec_dma(struct dma_device *d)
+{
+	return container_of(d, struct switchtec_dma_dev, dma_dev);
+}
 
 static struct switchtec_dma_chan *to_switchtec_dma_chan(struct dma_chan *c)
 {
@@ -1962,6 +1968,18 @@ void switchtec_chan_kobject_del(struct switchtec_dma_chan *swdma_chan)
 	}
 }
 
+bool is_fabric_dma(struct dma_device *dma)
+{
+	struct switchtec_dma_dev *d;
+
+	list_for_each_entry(d, &dma_list, list) {
+		if (dma == &d->dma_dev)
+			return d->is_fabric;
+	}
+
+	return false;
+}
+
 int execute_cmd(struct switchtec_dma_dev *swdma_dev, u32 cmd,
 		const void *input, size_t input_size, void *output,
 		size_t *output_size)
@@ -2011,7 +2029,36 @@ out:
 	mutex_unlock(&swdma_dev->cmd_mutex);
 	return ret;
 }
-static int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
+
+#define SWITCHTEC_LOCAL_PAX 0xff
+int switchtec_fabric_get_pax_count(struct dma_device *dma_dev)
+{
+	struct switchtec_dma_dev *swdma_dev = to_switchtec_dma(dma_dev);
+	u8 pax_id = SWITCHTEC_LOCAL_PAX;
+	size_t size;
+	int ret;
+
+	struct {
+		u8 pax_id;
+		u8 pax_num;
+		u8 local_phys_port_num;
+		u8 host_port_num;
+	} rsp;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	size = sizeof(rsp);
+	ret = execute_cmd(swdma_dev, CMD_GET_HOST_LIST, &pax_id, sizeof(pax_id),
+			  &rsp, &size);
+	if (ret < 0)
+		return ret;
+
+	return rsp.pax_num;
+}
+EXPORT_SYMBOL(switchtec_fabric_get_pax_count);
+
+int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;
 	int rc;
