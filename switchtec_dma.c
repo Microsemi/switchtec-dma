@@ -2132,6 +2132,99 @@ int switchtec_fabric_unregister_rhi_notify(struct dma_device *dma_dev,
 }
 EXPORT_SYMBOL_GPL(switchtec_fabric_unregister_rhi_notify);
 
+static irqreturn_t switchtec_dma_fabric_rhi_isr(int irq, void *dma)
+{
+	struct switchtec_dma_dev *swdma_dev = dma;
+
+	atomic_notifier_call_chain(&swdma_dev->rhi_notifier_list, irq, NULL);
+
+	return IRQ_HANDLED;
+}
+
+int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
+				     u8 buf_index, u64 buf_addr, u64 buf_size,
+				     int *cookie)
+{
+	struct switchtec_dma_dev *swdma_dev = to_switchtec_dma(dma_dev);
+	size_t size;
+	int irq;
+	int ret = 0;
+
+	struct {
+		u16 hfid;
+		u8 buf_index;
+		u8 rsvd;
+		u32 addr_lo;
+		u32 addr_hi;
+		u32 size_lo;
+		u32 size_hi;
+	} req = {
+		.hfid = cpu_to_le16(peer_hfid),
+		.buf_index = buf_index,
+		.addr_lo = cpu_to_le32(lower_32_bits(buf_addr)),
+		.addr_hi = cpu_to_le32(upper_32_bits(buf_addr)),
+		.size_lo = cpu_to_le32(lower_32_bits(buf_size)),
+		.size_hi = cpu_to_le32(upper_32_bits(buf_size)),
+	};
+
+	struct {
+		u8 buf_index;
+		u8 rsvd;
+		u16 buf_vec;
+	} rsp;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev) || !cookie)
+		return -EINVAL;
+
+	size = sizeof(rsp);
+	ret = execute_cmd(swdma_dev, CMD_REGISTER_BUF, &req, sizeof(req),
+			  &rsp, &size);
+	if (ret < 0)
+		return ret;
+
+	irq = pci_irq_vector(swdma_dev->pdev, le16_to_cpu(rsp.buf_vec));
+	if (irq < 0)
+		return -ENXIO;
+
+	*cookie = irq;
+
+	ret = devm_request_irq(&swdma_dev->pdev->dev, irq,
+			       switchtec_dma_fabric_rhi_isr, 0, KBUILD_MODNAME,
+			       swdma_dev);
+
+	return ret;
+}
+EXPORT_SYMBOL(switchtec_fabric_register_buffer);
+
+int switchtec_fabric_unregister_buffer(struct dma_device *dma_dev,
+				       u16 peer_hfid, u8 buf_index, int cookie)
+{
+	struct switchtec_dma_dev *swdma_dev = to_switchtec_dma(dma_dev);
+	int ret;
+
+	struct {
+		u16 hfid;
+		u8 buf_index;
+		u8 rsvd;
+	} req = {
+		.hfid = cpu_to_le16(peer_hfid),
+		.buf_index = buf_index,
+	};
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	ret = execute_cmd(swdma_dev, CMD_UNREGISTER_BUF, &req, sizeof(req),
+			  NULL, NULL);
+	if (ret < 0)
+		return ret;
+
+	devm_free_irq(&swdma_dev->pdev->dev, cookie, swdma_dev);
+
+	return 0;
+}
+EXPORT_SYMBOL(switchtec_fabric_unregister_buffer);
+
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;

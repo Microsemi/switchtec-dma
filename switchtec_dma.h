@@ -63,4 +63,9 @@ int switchtec_fabric_register_rhi_notify(struct dma_device *dma_dev,
 					 struct notifier_block *nb);
 int switchtec_fabric_unregister_rhi_notify(struct dma_device *dma_dev,
 					   struct notifier_block *nb);
+int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
+				     u8 buf_index, u64 buf_addr, u64 buf_size,
+				     int *cookie);
+int switchtec_fabric_unregister_buffer(struct dma_device *dma_dev,
+				       u16 peer_hfid, u8 buf_index, int cookie);
 #endif
