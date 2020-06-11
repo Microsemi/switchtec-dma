@@ -2071,6 +2071,17 @@ out:
 	return ret;
 }
 
+bool is_switchtec_fabric(struct dma_chan *chan)
+{
+	struct switchtec_dma_chan *c;
+	list_for_each_entry(c, &chan_list, list)
+		if (chan == &c->dma_chan)
+			return c->is_fabric;
+
+	return false;
+}
+EXPORT_SYMBOL(is_switchtec_fabric);
+
 struct dma_device *switchtec_fabric_get_dma_device(char *name)
 {
 	struct switchtec_dma_dev *d;
