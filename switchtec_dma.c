@@ -96,6 +96,7 @@ struct dmac_fabric_control_regs {
 	u32 cmd_event_enable;
 	u16 local_hfid;
 	u16 rsvd3;
+	u32 requestor_id;
 } __packed;
 
 #define SWITCHTEC_CHAN_CTRL_PAUSE     BIT(0)
@@ -2518,6 +2519,7 @@ int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 		SWITCHTEC_DMAC_FABRIC_CTRL_OFFSET;
 
 	swdma_dev->hfid = readw(&swdma_dev->mmio_fabric_ctrl->local_hfid);
+	readw(&swdma_dev->mmio_fabric_ctrl->requestor_id);
 
 	swdma_dev->cmd = dmam_alloc_coherent(dev, sizeof(*swdma_dev->cmd),
 					     &swdma_dev->cmd_dma_addr,
