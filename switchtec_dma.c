@@ -2033,6 +2033,34 @@ out:
 	return ret;
 }
 
+struct dma_device *switchtec_fabric_get_dma_device(char *name)
+{
+	struct switchtec_dma_dev *d;
+	char dev_name[16];
+
+	list_for_each_entry(d, &dma_list, list) {
+		sprintf(dev_name, "dma%d", d->dma_dev.dev_id);
+		if (!strcmp(name, dev_name)) {
+			get_device(d->dma_dev.dev);
+			return &d->dma_dev;
+		}
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(switchtec_fabric_get_dma_device);
+
+int switchtec_fabric_put_dma_device(struct dma_device *dma_dev)
+{
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	put_device(dma_dev->dev);
+
+	return 0;
+}
+EXPORT_SYMBOL(switchtec_fabric_put_dma_device);
+
 #define SWITCHTEC_LOCAL_PAX 0xff
 int switchtec_fabric_get_pax_count(struct dma_device *dma_dev)
 {

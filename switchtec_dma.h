@@ -82,6 +82,8 @@ struct switchtec_buffer {
 	u16 remote_rhi_dfid;
 };
 
+struct dma_device *switchtec_fabric_get_dma_device(char *name);
+int switchtec_fabric_put_dma_device(struct dma_device *dma_dev);
 int switchtec_fabric_get_pax_count(struct dma_device *dma_dev);
 int switchtec_fabric_get_host_ports(struct dma_device *dma_dev, u8 pax_id,
 				    int port_num,
