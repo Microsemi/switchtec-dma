@@ -833,9 +833,9 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 					   flags);
 }
 
-struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
-		struct dma_chan *c, dma_addr_t dst, u64 data,
-		unsigned long flags)
+struct dma_async_tx_descriptor *__switchtec_dma_prep_wimm_data(
+		struct dma_chan *c, u16 dst_dfid, dma_addr_t dst, u16 src_dfid,
+		u64 data, size_t len, unsigned long flags)
 {
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(c);
 	struct device *chan_dev = to_chan_dev(swdma_chan);
@@ -859,8 +859,10 @@ struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
 	desc->hw->daddr_hi = cpu_to_le32(upper_32_bits(dst));
 	desc->hw->saddr_widata_lo = cpu_to_le32(lower_32_bits(data));
 	desc->hw->saddr_widata_hi = cpu_to_le32(upper_32_bits(data));
-	desc->hw->byte_cnt = cpu_to_le32(8);
+	desc->hw->byte_cnt = cpu_to_le32(len);
 	desc->hw->tlp_setting = 0;
+	desc->hw->dfid_connid = cpu_to_le16(dst_dfid);
+	desc->hw->sfid = cpu_to_le16(src_dfid);
 	swdma_chan->cid &= SWITCHTEC_SE_CID_MASK;
 	desc->hw->cid = cpu_to_le16(swdma_chan->cid++);
 	desc->index = swdma_chan->head;
@@ -871,8 +873,14 @@ struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
 	dev_dbg(chan_dev, "SE DADDR    : 0x%08x_%08x\n",
 		desc->hw->daddr_hi, desc->hw->daddr_lo);
 	dev_dbg(chan_dev, "SE BCOUNT   : 0x%08x\n", desc->hw->byte_cnt);
+	dev_dbg(chan_dev, "SE SRC DFID : 0x%04x\n", desc->hw->sfid);
+	dev_dbg(chan_dev, "SE DST DFID : 0x%04x\n", desc->hw->dfid_connid);
 
-	desc->orig_size = 8;
+	desc->orig_size = len;
+
+	if (src_dfid != SWITCHTEC_INVALID_HFID &&
+	    dst_dfid != SWITCHTEC_INVALID_HFID)
+		desc->hw->ctrl |= SWITCHTEC_SE_DFM;
 
 	if (flags & DMA_PREP_INTERRUPT)
 		desc->hw->ctrl |= SWITCHTEC_SE_LIOF;
@@ -898,6 +906,15 @@ err_unlock:
 
 	spin_unlock_bh(&swdma_chan->ring_lock);
 	return NULL;
+}
+
+struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
+		struct dma_chan *c, dma_addr_t dst, u64 data,
+		unsigned long flags)
+{
+	return __switchtec_dma_prep_wimm_data(c, SWITCHTEC_INVALID_HFID,
+					      dst, SWITCHTEC_INVALID_HFID,
+					      data, sizeof(data), flags);
 }
 
 static dma_cookie_t switchtec_dma_tx_submit(
@@ -2450,6 +2467,21 @@ struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_memcpy(
 					   dma_src, len, flags);
 }
 EXPORT_SYMBOL(switchtec_fabric_dma_prep_memcpy);
+
+#define RHI_BASE_ADDR 0x135000
+#define RHI_DATA 0xffffffff
+struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_rhi(
+		struct dma_chan *dma_chan, u16 peer_rhi_dfid, u16 rhi_index,
+		u16 local_rhi_dfid)
+{
+	dma_addr_t dst_addr = RHI_BASE_ADDR + rhi_index * 4;
+	u32 data = RHI_DATA;
+
+	return __switchtec_dma_prep_wimm_data(dma_chan, peer_rhi_dfid, dst_addr,
+					      local_rhi_dfid, data,
+					      sizeof(data), 0);
+}
+EXPORT_SYMBOL(switchtec_fabric_dma_prep_rhi);
 
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {

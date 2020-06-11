@@ -108,4 +108,7 @@ struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_memcpy(
 		struct dma_chan *c, u16 dst_fid, dma_addr_t dma_dst,
 		u16 src_fid, dma_addr_t dma_src, size_t len,
 		unsigned long flags);
+struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_rhi(
+		struct dma_chan *dma_chan, u16 peer_rhi_dfid, u16 rhi_index,
+		u16 local_rhi_dfid);
 #endif
