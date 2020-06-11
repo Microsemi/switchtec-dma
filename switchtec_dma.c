@@ -301,6 +301,7 @@ struct switchtec_dma_dev {
 	struct cmd_output *cmd;
 	dma_addr_t cmd_dma_addr;
 	int cmd_irq;
+	struct atomic_notifier_head rhi_notifier_list;
 
 	struct kref ref;
 	struct work_struct release_work;
@@ -2104,6 +2105,33 @@ int switchtec_fabric_get_host_ports(struct dma_device *dma_dev, u8 pax_id,
 }
 EXPORT_SYMBOL(switchtec_fabric_get_host_ports);
 
+int switchtec_fabric_register_rhi_notify(struct dma_device *dma_dev,
+					 struct notifier_block *nb)
+{
+	struct switchtec_dma_dev *swdma_dev;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	swdma_dev = to_switchtec_dma(dma_dev);
+	return atomic_notifier_chain_register(&swdma_dev->rhi_notifier_list, nb);
+}
+EXPORT_SYMBOL_GPL(switchtec_fabric_register_rhi_notify);
+
+int switchtec_fabric_unregister_rhi_notify(struct dma_device *dma_dev,
+					   struct notifier_block *nb)
+{
+	struct switchtec_dma_dev *swdma_dev;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev) || !nb)
+		return -EINVAL;
+
+	swdma_dev = to_switchtec_dma(dma_dev);
+	return atomic_notifier_chain_unregister(&swdma_dev->rhi_notifier_list,
+						nb);
+}
+EXPORT_SYMBOL_GPL(switchtec_fabric_unregister_rhi_notify);
+
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;
@@ -2131,6 +2159,9 @@ int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 	       &swdma_dev->mmio_fabric_ctrl->cmd_dma_addr_hi);
 
 	mutex_init(&swdma_dev->cmd_mutex);
+
+	ATOMIC_INIT_NOTIFIER_HEAD(&swdma_dev->rhi_notifier_list);
+
 	return 0;
 
 err_exit:

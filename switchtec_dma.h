@@ -59,4 +59,8 @@ int switchtec_fabric_get_pax_count(struct dma_device *dma_dev);
 int switchtec_fabric_get_host_ports(struct dma_device *dma_dev, u8 pax_id,
 				    int port_num,
 				    struct switchtec_host_port *ports);
+int switchtec_fabric_register_rhi_notify(struct dma_device *dma_dev,
+					 struct notifier_block *nb);
+int switchtec_fabric_unregister_rhi_notify(struct dma_device *dma_dev,
+					   struct notifier_block *nb);
 #endif
