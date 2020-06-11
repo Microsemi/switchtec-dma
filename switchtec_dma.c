@@ -2294,6 +2294,33 @@ int switchtec_fabric_get_peer_buffers(struct dma_device *dma_dev, u16 peer_hfid,
 }
 EXPORT_SYMBOL(switchtec_fabric_get_peer_buffers);
 
+int switchtec_fabric_get_buffer_number(struct dma_device *dma_dev)
+{
+	struct switchtec_dma_dev *swdma_dev = to_switchtec_dma(dma_dev);
+	u16 local_buf_index = 0;
+	size_t size;
+	int ret;
+
+	struct {
+		u8 total_buf_num;
+		u8 local_buf_index;
+		u8 rtn_buf_num;
+		u8 rsvd;
+	} rsp;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	size = sizeof(rsp);
+	ret = execute_cmd(swdma_dev, CMD_GET_OWN_BUF_LIST, &local_buf_index,
+			  sizeof(local_buf_index), &rsp, &size);
+	if (ret < 0)
+		return ret;
+
+	return rsp.total_buf_num;
+}
+EXPORT_SYMBOL(switchtec_fabric_get_buffer_number);
+
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;

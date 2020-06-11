@@ -98,4 +98,5 @@ int switchtec_fabric_unregister_buffer(struct dma_device *dma_dev,
 int switchtec_fabric_get_peer_buffers(struct dma_device *dma_dev, u16 hfid,
 				      int buf_num,
 				      struct switchtec_buffer *bufs);
+int switchtec_fabric_get_buffer_number(struct dma_device *dma_dev);
 #endif
