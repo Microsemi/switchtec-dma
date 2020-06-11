@@ -349,6 +349,7 @@ struct switchtec_dma_hw_se_desc {
 	__le16 sfid;
 };
 
+#define SWITCHTEC_SE_DFM                BIT(5)
 #define SWITCHTEC_SE_LIOF               BIT(6)
 #define SWITCHTEC_SE_BRR                BIT(7)
 #define SWITCHTEC_SE_CID_MASK           GENMASK(15, 0)
@@ -740,9 +741,11 @@ static void switchtec_dma_chan_status_task(unsigned long data)
 	}
 }
 
-static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
-		struct dma_chan *c, dma_addr_t dma_dst, dma_addr_t dma_src,
-		size_t len, unsigned long flags)
+#define SWITCHTEC_INVALID_HFID 0xffff
+static struct dma_async_tx_descriptor *__switchtec_dma_prep_memcpy(
+		struct dma_chan *c, u16 dst_fid, dma_addr_t dma_dst,
+		u16 src_fid, dma_addr_t dma_src, size_t len,
+		unsigned long flags)
 	__acquires(swdma_chan->ring_lock)
 {
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(c);
@@ -772,6 +775,8 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 	desc->hw->saddr_widata_hi = cpu_to_le32(upper_32_bits(dma_src));
 	desc->hw->byte_cnt = cpu_to_le32(len);
 	desc->hw->tlp_setting = 0;
+	desc->hw->dfid_connid = cpu_to_le16(dst_fid);
+	desc->hw->sfid = cpu_to_le16(src_fid);
 	swdma_chan->cid &= SWITCHTEC_SE_CID_MASK;
 	desc->hw->cid = cpu_to_le16(swdma_chan->cid++);
 	desc->index = swdma_chan->head;
@@ -782,8 +787,14 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 	dev_dbg(chan_dev, "SE DADDR : 0x%08x_%08x\n",
 		desc->hw->daddr_hi, desc->hw->daddr_lo);
 	dev_dbg(chan_dev, "SE BCOUNT: 0x%08x\n", desc->hw->byte_cnt);
+	dev_dbg(chan_dev, "SE SRC DFID : 0x%04x\n", desc->hw->sfid);
+	dev_dbg(chan_dev, "SE DST DFID : 0x%04x\n", desc->hw->dfid_connid);
 
 	desc->orig_size = len;
+
+	if (src_fid != SWITCHTEC_INVALID_HFID &&
+	    dst_fid != SWITCHTEC_INVALID_HFID)
+		desc->hw->ctrl |= SWITCHTEC_SE_DFM;
 
 	if (flags & DMA_PREP_INTERRUPT)
 		desc->hw->ctrl |= SWITCHTEC_SE_LIOF;
@@ -810,6 +821,16 @@ err_unlock:
 
 	spin_unlock_bh(&swdma_chan->ring_lock);
 	return NULL;
+}
+
+static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
+		struct dma_chan *c, dma_addr_t dma_dst, dma_addr_t dma_src,
+		size_t len, unsigned long flags)
+{
+
+	return __switchtec_dma_prep_memcpy(c, SWITCHTEC_INVALID_HFID, dma_dst,
+					   SWITCHTEC_INVALID_HFID, dma_src, len,
+					   flags);
 }
 
 struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
@@ -2419,6 +2440,16 @@ int switchtec_fabric_get_buffers(struct dma_device *dma_dev, int buf_num,
 	return rtn_buf_num;
 }
 EXPORT_SYMBOL(switchtec_fabric_get_buffers);
+
+struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_memcpy(
+		struct dma_chan *c, u16 dst_fid, dma_addr_t dma_dst,
+		u16 src_fid, dma_addr_t dma_src, size_t len,
+		unsigned long flags)
+{
+	return __switchtec_dma_prep_memcpy(c, dst_fid, dma_dst, src_fid,
+					   dma_src, len, flags);
+}
+EXPORT_SYMBOL(switchtec_fabric_dma_prep_memcpy);
 
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
