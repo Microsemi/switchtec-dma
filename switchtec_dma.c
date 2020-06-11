@@ -2321,6 +2321,77 @@ int switchtec_fabric_get_buffer_number(struct dma_device *dma_dev)
 }
 EXPORT_SYMBOL(switchtec_fabric_get_buffer_number);
 
+int switchtec_fabric_get_buffers(struct dma_device *dma_dev, int buf_num,
+				 struct switchtec_buffer *bufs)
+{
+	struct switchtec_dma_dev *swdma_dev = to_switchtec_dma(dma_dev);
+	u8 local_buf_index = 0;
+	size_t size;
+	int i, j;
+	int rtn_buf_num = 0;
+	int remain_buf_num = 0;
+	int ret;
+
+	struct {
+		u16 buf_num;
+		u16 buf_index;
+		u8 rtn_buf_num;
+		u8 rsvd[3];
+		struct buffer_entry bufs[(CMD_OUTPUT_SIZE - 8) /
+			sizeof(struct buffer_entry)];
+	} rsp;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	i = 0;
+	do {
+		size = sizeof(rsp);
+		ret = execute_cmd(swdma_dev, CMD_GET_OWN_BUF_LIST,
+				  &local_buf_index, sizeof(local_buf_index),
+				  &rsp, &size);
+		if (ret < 0)
+			return ret;
+
+		if (!rtn_buf_num) {
+			rtn_buf_num = buf_num < rsp.buf_num ? buf_num :
+				      rsp.buf_num;
+			remain_buf_num = rtn_buf_num;
+		}
+
+		j = 0;
+		for (j = 0; j < rsp.rtn_buf_num; i++, j++) {
+			struct switchtec_buffer *buf = &bufs[i];
+			struct buffer_entry *rsp_buf = &rsp.bufs[j];
+
+			buf->from_hfid = le16_to_cpu(swdma_dev->hfid);
+			buf->to_hfid = le16_to_cpu(rsp_buf->hfid);
+			buf->index = rsp_buf->index;
+			buf->dma_addr = le32_to_cpu(rsp_buf->addr_hi);
+			buf->dma_addr <<= 32;
+			buf->dma_addr |= le32_to_cpu(rsp_buf->addr_lo);
+			buf->dma_size = le32_to_cpu(rsp_buf->size_hi);
+			buf->dma_size <<= 32;
+			buf->dma_size |= le32_to_cpu(rsp_buf->size_lo);
+			buf->rhi_index = le16_to_cpu(rsp_buf->rhi_index);
+			buf->local_dfid = le16_to_cpu(rsp_buf->local_dfid);
+			buf->remote_dfid = le16_to_cpu(rsp_buf->remote_dfid);
+			buf->local_rhi_dfid =
+				le16_to_cpu(rsp_buf->local_rhi_dfid);
+			buf->remote_rhi_dfid =
+				le16_to_cpu(rsp_buf->remote_rhi_dfid);
+
+			local_buf_index++;
+
+			if (--remain_buf_num == 0)
+				break;
+		}
+	} while (remain_buf_num);
+
+	return rtn_buf_num;
+}
+EXPORT_SYMBOL(switchtec_fabric_get_buffers);
+
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;
