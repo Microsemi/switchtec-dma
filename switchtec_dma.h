@@ -82,6 +82,38 @@ struct switchtec_buffer {
 	u16 remote_rhi_dfid;
 };
 
+/**
+ * enum switchtec_fabric_event_type - fabric DMA event type
+ * @SWITCHTEC_FABRIC_REGISTER_BUFFER: buffer registered to local host port
+ * @SWITCHTEC_FABRIC_UNREGISTER_BUFFER: buffer unregistered from local host port
+ * @SWITCHTEC_FABRIC_EVENT_OVERFLOW: F/W internal event buffer overflow
+ */
+enum switchtec_fabric_event_type {
+	SWITCHTEC_FABRIC_REGISTER_BUFFER,
+	SWITCHTEC_FABRIC_UNREGISTER_BUFFER,
+	SWITCHTEC_FABRIC_EVENT_OVERFLOW,
+};
+
+struct switchtec_fabric_event {
+	enum switchtec_fabric_event_type type;
+	union {
+		struct register_buf_data {
+			u16 hfid;
+			u16 rhi_index;
+			u8 index;
+			u8 rsvd[3];
+		} reg_buf_data;
+
+		struct unregister_buf_data {
+			u16 hfid;
+			u8 index;
+			u8 rsvd;
+		} unreg_buf_data;
+
+		u32 data[3];
+	};
+};
+
 bool is_switchtec_fabric(struct dma_chan *chan);
 struct dma_device *switchtec_fabric_get_dma_device(char *name);
 int switchtec_fabric_put_dma_device(struct dma_device *dma_dev);

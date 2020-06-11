@@ -272,6 +272,13 @@ struct cmd_output{
 	u8 data[CMD_OUTPUT_SIZE];
 };
 
+#define SWITCHTEC_DMA_EQ_SIZE SZ_1K
+struct fabric_event_queue {
+	u32 head;
+	u32 rsvd[3];
+	struct switchtec_fabric_event entries[];
+};
+
 struct switchtec_dma_dev {
 	struct dma_device dma_dev;
 	struct pci_dev __rcu *pdev;
@@ -305,6 +312,13 @@ struct switchtec_dma_dev {
 	dma_addr_t cmd_dma_addr;
 	int cmd_irq;
 	struct atomic_notifier_head rhi_notifier_list;
+
+	struct fabric_event_queue *eq;
+	dma_addr_t eq_dma_addr;
+	int eq_tail;
+	int event_irq;
+	struct tasklet_struct fabric_event_task;
+	struct atomic_notifier_head event_notifier_list;
 
 	struct kref ref;
 	struct work_struct release_work;
@@ -2470,6 +2484,50 @@ int switchtec_fabric_get_buffers(struct dma_device *dma_dev, int buf_num,
 }
 EXPORT_SYMBOL(switchtec_fabric_get_buffers);
 
+static int switchtec_fabric_event_notify(struct dma_device *dma_dev,
+					 struct switchtec_fabric_event *event)
+{
+	struct switchtec_dma_dev *swdma_dev;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	swdma_dev = to_switchtec_dma(dma_dev);
+	return atomic_notifier_call_chain(&swdma_dev->event_notifier_list,
+					  event->type, event);
+}
+
+static void switchtec_dma_fabric_event_task(unsigned long data)
+{
+	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	struct switchtec_fabric_event *event;
+	int cnt;
+
+	while ((cnt = CIRC_CNT(swdma_dev->eq->head, swdma_dev->eq_tail,
+			       SWITCHTEC_DMA_EQ_SIZE)) > 0) {
+		event = &swdma_dev->eq->entries[swdma_dev->eq_tail];
+
+		switchtec_fabric_event_notify(&swdma_dev->dma_dev, event);
+
+		swdma_dev->eq_tail++;
+		swdma_dev->eq_tail &= SWITCHTEC_DMA_EQ_SIZE - 1;
+	}
+
+	writeq(swdma_dev->eq_tail,
+	       &swdma_dev->mmio_fabric_ctrl->event_queue_tail);
+
+	return;
+}
+
+static irqreturn_t switchtec_dma_fabric_event_isr(int irq, void *dma)
+{
+	struct switchtec_dma_dev *swdma_dev = dma;
+
+	tasklet_schedule(&swdma_dev->fabric_event_task);
+
+	return IRQ_HANDLED;
+}
+
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_memcpy(
 		struct dma_chan *c, u16 dst_fid, dma_addr_t dma_dst,
 		u16 src_fid, dma_addr_t dma_src, size_t len,
@@ -2508,6 +2566,8 @@ EXPORT_SYMBOL(switchtec_fabric_dma_prep_wimm_data);
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;
+	int irq;
+	size_t size;
 	int rc;
 
 	if (!swdma_dev->is_fabric)
@@ -2536,11 +2596,49 @@ int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 
 	mutex_init(&swdma_dev->cmd_mutex);
 
+	tasklet_init(&swdma_dev->fabric_event_task,
+		     switchtec_dma_fabric_event_task,
+		     (unsigned long)swdma_dev);
+
+	irq = readw(&swdma_dev->mmio_fabric_ctrl->event_vec);
+	dev_dbg(dev, "Fabric event irq vec 0x%x\n", irq);
+
+	irq = pci_irq_vector(swdma_dev->pdev, irq);
+	if (irq < 0)
+		return irq;
+
+	rc = devm_request_irq(dev, irq, switchtec_dma_fabric_event_isr, 0,
+			      KBUILD_MODNAME, swdma_dev);
+	if (rc)
+		return rc;
+
+	swdma_dev->event_irq = irq;
+
+	swdma_dev->eq_tail = 0;
+
+	size = SWITCHTEC_DMA_EQ_SIZE * sizeof(struct switchtec_fabric_event) +
+		offsetof(struct fabric_event_queue, entries);
+	swdma_dev->eq = dmam_alloc_coherent(dev, size, &swdma_dev->eq_dma_addr,
+					    GFP_KERNEL);
+	if (!swdma_dev->eq) {
+		rc = -ENOMEM;
+		goto err_exit;
+	}
+
+	writel(cpu_to_le32(lower_32_bits(swdma_dev->eq_dma_addr)),
+	       &swdma_dev->mmio_fabric_ctrl->event_dma_addr_lo);
+	writel(cpu_to_le32(upper_32_bits(swdma_dev->eq_dma_addr)),
+	       &swdma_dev->mmio_fabric_ctrl->event_dma_addr_hi);
+
+	ATOMIC_INIT_NOTIFIER_HEAD(&swdma_dev->event_notifier_list);
 	ATOMIC_INIT_NOTIFIER_HEAD(&swdma_dev->rhi_notifier_list);
 
 	return 0;
 
 err_exit:
+	if (swdma_dev->event_irq)
+		devm_free_irq(dev, swdma_dev->event_irq, swdma_dev);
+
 	return rc;
 }
 
@@ -2745,11 +2843,18 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 	tasklet_kill(&swdma_dev->int_error_task);
 	tasklet_kill(&swdma_dev->chan_status_task);
 
+	if (swdma_dev->is_fabric) {
+		tasklet_kill(&swdma_dev->fabric_event_task);
+	}
+
 	rcu_assign_pointer(swdma_dev->pdev, NULL);
 	synchronize_rcu();
 
 	devm_free_irq(dev, swdma_dev->int_error_irq, swdma_dev);
 	devm_free_irq(dev, swdma_dev->chan_status_irq, swdma_dev);
+
+	if (swdma_dev->is_fabric)
+		devm_free_irq(dev, swdma_dev->event_irq, swdma_dev);
 
 	pci_free_irq_vectors(pdev);
 
