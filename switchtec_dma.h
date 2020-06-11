@@ -136,6 +136,10 @@ int switchtec_fabric_get_peer_buffers(struct dma_device *dma_dev, u16 hfid,
 int switchtec_fabric_get_buffer_number(struct dma_device *dma_dev);
 int switchtec_fabric_get_buffers(struct dma_device *dma_dev, int buf_num,
 				 struct switchtec_buffer *bufs);
+int switchtec_fabric_register_event_notify(struct dma_device *dma_dev,
+					   struct notifier_block *nb);
+int switchtec_fabric_unregister_event_notify(struct dma_device *dma_dev,
+					     struct notifier_block *nb);
 
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_memcpy(
 		struct dma_chan *c, u16 dst_fid, dma_addr_t dma_dst,

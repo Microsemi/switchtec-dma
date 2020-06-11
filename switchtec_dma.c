@@ -2563,6 +2563,33 @@ struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_wimm_data(
 }
 EXPORT_SYMBOL(switchtec_fabric_dma_prep_wimm_data);
 
+int switchtec_fabric_register_event_notify(struct dma_device *dma_dev,
+					   struct notifier_block *nb)
+{
+	struct switchtec_dma_dev *swdma_dev;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	swdma_dev = to_switchtec_dma(dma_dev);
+	return atomic_notifier_chain_register(&swdma_dev->event_notifier_list, nb);
+}
+EXPORT_SYMBOL_GPL(switchtec_fabric_register_event_notify);
+
+int switchtec_fabric_unregister_event_notify(struct dma_device *dma_dev,
+					     struct notifier_block *nb)
+{
+	struct switchtec_dma_dev *swdma_dev;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	swdma_dev = to_switchtec_dma(dma_dev);
+	return atomic_notifier_chain_unregister(&swdma_dev->event_notifier_list,
+						nb);
+}
+EXPORT_SYMBOL_GPL(switchtec_fabric_unregister_event_notify);
+
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;
