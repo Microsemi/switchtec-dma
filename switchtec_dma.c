@@ -294,6 +294,8 @@ struct switchtec_dma_dev {
 	struct tasklet_struct chan_status_task;
 
 	bool is_fabric;
+	u16 hfid;
+
 	/*
 	 * Only one cmd can be executed at a time.
 	 */
@@ -2225,6 +2227,73 @@ int switchtec_fabric_unregister_buffer(struct dma_device *dma_dev,
 }
 EXPORT_SYMBOL(switchtec_fabric_unregister_buffer);
 
+struct buffer_entry {
+	u16 hfid;
+	u8 index;
+	u8 rsvd1;
+	u32 addr_lo;
+	u32 addr_hi;
+	u32 size_lo;
+	u32 size_hi;
+	u16 rhi_index;
+	u16 rsvd2;
+	u16 local_dfid;
+	u16 remote_dfid;
+	u16 local_rhi_dfid;
+	u16 remote_rhi_dfid;
+};
+
+int switchtec_fabric_get_peer_buffers(struct dma_device *dma_dev, u16 peer_hfid,
+				      int buf_num,
+				      struct switchtec_buffer *bufs)
+{
+	struct switchtec_dma_dev *swdma_dev = to_switchtec_dma(dma_dev);
+	size_t size;
+	int i;
+	int rtn_buf_num;
+	int ret;
+
+	struct {
+		u8 buf_num;
+		u8 rsvd1[3];
+		u32 rsvd2;
+		struct buffer_entry bufs[SWITCHTEC_BUF_NUM_PER_HOST_PORT];
+	} rsp;
+
+	if (!dma_dev || !is_fabric_dma(dma_dev))
+		return -EINVAL;
+
+	size = sizeof(rsp);
+	ret = execute_cmd(swdma_dev, CMD_GET_BUF_LIST, &peer_hfid,
+			  sizeof(peer_hfid), &rsp, &size);
+	if (ret < 0)
+		return ret;
+
+	rtn_buf_num = buf_num < rsp.buf_num ? buf_num : rsp.buf_num;
+	for (i = 0; i < rtn_buf_num; i++) {
+		struct switchtec_buffer *buf = &bufs[i];
+		struct buffer_entry *rsp_buf = &rsp.bufs[i];
+
+		buf->from_hfid = le16_to_cpu(rsp_buf->hfid);
+		buf->to_hfid = le16_to_cpu(swdma_dev->hfid);
+		buf->index = rsp_buf->index;
+		buf->dma_addr = le32_to_cpu(rsp_buf->addr_hi);
+		buf->dma_addr <<= 32;
+		buf->dma_addr |= le32_to_cpu(rsp_buf->addr_lo);
+		buf->dma_size = le32_to_cpu(rsp_buf->size_hi);
+		buf->dma_size <<= 32;
+		buf->dma_size |= le32_to_cpu(rsp_buf->size_lo);
+		buf->rhi_index = le16_to_cpu(rsp_buf->rhi_index);
+		buf->local_dfid = le16_to_cpu(rsp_buf->local_dfid);
+		buf->remote_dfid = le16_to_cpu(rsp_buf->remote_dfid);
+		buf->local_rhi_dfid = le16_to_cpu(rsp_buf->local_rhi_dfid);
+		buf->remote_rhi_dfid = le16_to_cpu(rsp_buf->remote_rhi_dfid);
+	}
+
+	return rtn_buf_num;
+}
+EXPORT_SYMBOL(switchtec_fabric_get_peer_buffers);
+
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;
@@ -2237,6 +2306,8 @@ int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 		SWITCHTEC_DMAC_FABRIC_CMD_OFFSET;
 	swdma_dev->mmio_fabric_ctrl = swdma_dev->bar +
 		SWITCHTEC_DMAC_FABRIC_CTRL_OFFSET;
+
+	swdma_dev->hfid = readw(&swdma_dev->mmio_fabric_ctrl->local_hfid);
 
 	swdma_dev->cmd = dmam_alloc_coherent(dev, sizeof(*swdma_dev->cmd),
 					     &swdma_dev->cmd_dma_addr,
