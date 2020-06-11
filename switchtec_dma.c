@@ -2483,6 +2483,16 @@ struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_rhi(
 }
 EXPORT_SYMBOL(switchtec_fabric_dma_prep_rhi);
 
+struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_wimm_data(
+		struct dma_chan *dma_chan, u16 dst_dfid, dma_addr_t dst,
+		u16 src_dfid, u64 data, unsigned long flags)
+{
+	return __switchtec_dma_prep_wimm_data(dma_chan, dst_dfid, dst,
+					      src_dfid, data, sizeof(data),
+					      flags);
+}
+EXPORT_SYMBOL(switchtec_fabric_dma_prep_wimm_data);
+
 int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;
