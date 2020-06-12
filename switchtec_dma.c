@@ -2240,6 +2240,7 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 				     int *cookie)
 {
 	struct switchtec_dma_dev *swdma_dev = to_switchtec_dma(dma_dev);
+	struct device *dev = &swdma_dev->pdev->dev;
 	size_t size;
 	int irq;
 	int ret = 0;
@@ -2279,6 +2280,14 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 	irq = pci_irq_vector(swdma_dev->pdev, le16_to_cpu(rsp.buf_vec));
 	if (irq < 0)
 		return -ENXIO;
+
+	dev_dbg(dev, "Register Buffer (to hfid 0x%04x, index %d)\n", peer_hfid, buf_index);
+	dev_dbg(dev, "    dma addr:     0x%08x_%08x\n", upper_32_bits(buf_addr),
+		lower_32_bits(buf_addr));
+	dev_dbg(dev, "    dma size:     0x%08x_%08x\n", upper_32_bits(buf_size),
+		lower_32_bits(buf_size));
+	dev_dbg(dev, "    vector:       %x", le16_to_cpu(rsp.buf_vec));
+	dev_dbg(dev, "    irq (cookie): 0x%x", irq);
 
 	*cookie = irq;
 
