@@ -2660,6 +2660,9 @@ int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 	ATOMIC_INIT_NOTIFIER_HEAD(&swdma_dev->event_notifier_list);
 	ATOMIC_INIT_NOTIFIER_HEAD(&swdma_dev->rhi_notifier_list);
 
+	writel(cpu_to_le32(0), &swdma_dev->mmio_fabric_ctrl->cmd_event_enable);
+	writel(cpu_to_le32(1), &swdma_dev->mmio_fabric_ctrl->cmd_event_enable);
+
 	return 0;
 
 err_exit:
