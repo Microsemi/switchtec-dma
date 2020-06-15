@@ -2609,13 +2609,7 @@ int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 	if (!swdma_dev->is_fabric)
 		return 0;
 
-	swdma_dev->mmio_fabric_cmd = swdma_dev->bar +
-		SWITCHTEC_DMAC_FABRIC_CMD_OFFSET;
-	swdma_dev->mmio_fabric_ctrl = swdma_dev->bar +
-		SWITCHTEC_DMAC_FABRIC_CTRL_OFFSET;
-
 	swdma_dev->hfid = readw(&swdma_dev->mmio_fabric_ctrl->local_hfid);
-	readw(&swdma_dev->mmio_fabric_ctrl->requestor_id);
 
 	swdma_dev->cmd = dmam_alloc_coherent(dev, sizeof(*swdma_dev->cmd),
 					     &swdma_dev->cmd_dma_addr,
@@ -2709,6 +2703,15 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	swdma_dev->mmio_dmac_ctrl = bar + SWITCHTEC_DMAC_CONTROL_OFFSET;
 	swdma_dev->mmio_chan_hw_all = bar + SWITCHTEC_DMAC_CHAN_CTRL_OFFSET;
 	swdma_dev->mmio_chan_fw_all = bar + SWITCHTEC_DMAC_CHAN_CFG_STS_OFFSET;
+
+	if (is_fabric) {
+		swdma_dev->mmio_fabric_cmd = swdma_dev->bar +
+			SWITCHTEC_DMAC_FABRIC_CMD_OFFSET;
+		swdma_dev->mmio_fabric_ctrl = swdma_dev->bar +
+			SWITCHTEC_DMAC_FABRIC_CTRL_OFFSET;
+
+		readw(&swdma_dev->mmio_fabric_ctrl->requestor_id);
+	}
 
 	RCU_INIT_POINTER(swdma_dev->pdev, pdev);
 
