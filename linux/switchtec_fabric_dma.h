@@ -4,8 +4,8 @@
  * Copyright (c) 2020, Microchip Corporation
  */
 
-#ifndef _SWITCHTEC_DMA_H
-#define _SWITCHTEC_DMA_H
+#ifndef _SWITCHTEC_FABRIC_DMA_H
+#define _SWITCHTEC_FABRIC_DMA_H
 
 #include <linux/dmaengine.h>
 

@@ -9,7 +9,7 @@
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 
-#include "../switchtec_dma.h"
+#include "../linux/switchtec_fabric_dma.h"
 #include "protocol.h"
 
 MODULE_LICENSE("Dual BSD/GPL");

@@ -16,7 +16,7 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 
-#include "switchtec_dma.h"
+#include "linux/switchtec_fabric_dma.h"
 #include "version.h"
 MODULE_DESCRIPTION("Switchtec PCIe Switch DMA Engine");
 MODULE_VERSION(VERSION);
