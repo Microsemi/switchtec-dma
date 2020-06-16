@@ -356,11 +356,17 @@ struct switchtec_dma_hw_se_desc {
 	__le16 rsvd1;
 	__le16 cid;
 	__le32 byte_cnt;
-	__le32 saddr_widata_lo;
-	__le32 saddr_widata_hi;
+	union {
+		__le32 saddr_lo;
+		__le32 widata_lo;
+	};
+	union {
+		__le32 saddr_hi;
+		__le32 widata_hi;
+	};
 	__le32 daddr_lo;
 	__le32 daddr_hi;
-	__le16 dfid_connid;
+	__le16 dfid;
 	__le16 sfid;
 };
 
@@ -786,24 +792,23 @@ static struct dma_async_tx_descriptor *__switchtec_dma_prep_memcpy(
 	desc->hw->opc = SWITCHTEC_DMA_OPC_MEMCPY;
 	desc->hw->daddr_lo = cpu_to_le32(lower_32_bits(dma_dst));
 	desc->hw->daddr_hi = cpu_to_le32(upper_32_bits(dma_dst));
-	desc->hw->saddr_widata_lo = cpu_to_le32(lower_32_bits(dma_src));
-	desc->hw->saddr_widata_hi = cpu_to_le32(upper_32_bits(dma_src));
+	desc->hw->saddr_lo = cpu_to_le32(lower_32_bits(dma_src));
+	desc->hw->saddr_hi = cpu_to_le32(upper_32_bits(dma_src));
 	desc->hw->byte_cnt = cpu_to_le32(len);
 	desc->hw->tlp_setting = 0;
-	desc->hw->dfid_connid = cpu_to_le16(dst_fid);
+	desc->hw->dfid = cpu_to_le16(dst_fid);
 	desc->hw->sfid = cpu_to_le16(src_fid);
 	swdma_chan->cid &= SWITCHTEC_SE_CID_MASK;
 	desc->hw->cid = cpu_to_le16(swdma_chan->cid++);
 	desc->index = swdma_chan->head;
 
-	dev_dbg(chan_dev, "SE SADDR : 0x%08x_%08x\n",
-		desc->hw->saddr_widata_hi,
-		desc->hw->saddr_widata_lo);
+	dev_dbg(chan_dev, "SE SADDR : 0x%08x_%08x\n", desc->hw->saddr_hi,
+		desc->hw->saddr_lo);
 	dev_dbg(chan_dev, "SE DADDR : 0x%08x_%08x\n",
 		desc->hw->daddr_hi, desc->hw->daddr_lo);
 	dev_dbg(chan_dev, "SE BCOUNT: 0x%08x\n", desc->hw->byte_cnt);
 	dev_dbg(chan_dev, "SE SRC DFID : 0x%04x\n", desc->hw->sfid);
-	dev_dbg(chan_dev, "SE DST DFID : 0x%04x\n", desc->hw->dfid_connid);
+	dev_dbg(chan_dev, "SE DST DFID : 0x%04x\n", desc->hw->dfid);
 
 	desc->orig_size = len;
 
@@ -872,24 +877,23 @@ struct dma_async_tx_descriptor *__switchtec_dma_prep_wimm_data(
 	desc->hw->opc = SWITCHTEC_DMA_OPC_WRIMM;
 	desc->hw->daddr_lo = cpu_to_le32(lower_32_bits(dst));
 	desc->hw->daddr_hi = cpu_to_le32(upper_32_bits(dst));
-	desc->hw->saddr_widata_lo = cpu_to_le32(lower_32_bits(data));
-	desc->hw->saddr_widata_hi = cpu_to_le32(upper_32_bits(data));
+	desc->hw->widata_lo = cpu_to_le32(lower_32_bits(data));
+	desc->hw->widata_hi = cpu_to_le32(upper_32_bits(data));
 	desc->hw->byte_cnt = cpu_to_le32(len);
 	desc->hw->tlp_setting = 0;
-	desc->hw->dfid_connid = cpu_to_le16(dst_dfid);
+	desc->hw->dfid = cpu_to_le16(dst_dfid);
 	desc->hw->sfid = cpu_to_le16(src_dfid);
 	swdma_chan->cid &= SWITCHTEC_SE_CID_MASK;
 	desc->hw->cid = cpu_to_le16(swdma_chan->cid++);
 	desc->index = swdma_chan->head;
 
-	dev_dbg(chan_dev, "SE WIMM Data: 0x%08x_%08x\n",
-		desc->hw->saddr_widata_hi,
-		desc->hw->saddr_widata_lo);
+	dev_dbg(chan_dev, "SE WIMM Data: 0x%08x_%08x\n", desc->hw->widata_hi,
+		desc->hw->widata_lo);
 	dev_dbg(chan_dev, "SE DADDR    : 0x%08x_%08x\n",
 		desc->hw->daddr_hi, desc->hw->daddr_lo);
 	dev_dbg(chan_dev, "SE BCOUNT   : 0x%08x\n", desc->hw->byte_cnt);
 	dev_dbg(chan_dev, "SE SRC DFID : 0x%04x\n", desc->hw->sfid);
-	dev_dbg(chan_dev, "SE DST DFID : 0x%04x\n", desc->hw->dfid_connid);
+	dev_dbg(chan_dev, "SE DST DFID : 0x%04x\n", desc->hw->dfid);
 
 	desc->orig_size = len;
 
