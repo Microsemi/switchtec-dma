@@ -412,13 +412,7 @@ struct switchtec_dma_desc {
 	u32 orig_size;
 	bool completed;
 };
-#if 0
-static struct switchtec_dma_desc *to_switchtec_desc(
-		struct dma_async_tx_descriptor *txd)
-{
-	return container_of(txd, struct switchtec_dma_desc, txd);
-}
-#endif
+
 #define HALT_RETRY 100
 static int halt_channel(struct switchtec_dma_chan *swdma_chan)
 {
@@ -683,20 +677,6 @@ static void switchtec_dma_chan_stop(struct switchtec_dma_chan *swdma_chan)
 	rcu_read_unlock();
 }
 
-#if 0
-static void switchtec_dma_stop(struct switchtec_dma_dev *swdma_dev)
-{
-	rcu_read_lock();
-	if (!rcu_dereference(swdma_dev->pdev)) {
-		rcu_read_unlock();
-		return;
-	}
-
-	__switchtec_dma_stop(swdma_dev);
-
-	rcu_read_unlock();
-}
-#endif
 static void switchtec_dma_desc_task(unsigned long data)
 {
 	struct switchtec_dma_chan *swdma_chan = (void *)data;
