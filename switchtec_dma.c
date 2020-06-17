@@ -743,6 +743,102 @@ static void switchtec_dma_chan_status_task(unsigned long data)
 }
 
 #define SWITCHTEC_INVALID_HFID 0xffff
+
+enum desc_type{
+	MEMCPY,
+	WIMM,
+	UNKNOWN_TRANSACTION,
+};
+
+struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
+		struct dma_chan *c, enum desc_type type, u16 dst_fid,
+		dma_addr_t dma_dst, u16 src_fid, dma_addr_t dma_src, u64 data,
+		size_t len, unsigned long flags)
+	__acquires(swdma_chan->ring_lock)
+{
+	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(c);
+	struct device *chan_dev = to_chan_dev(swdma_chan);
+	struct switchtec_dma_desc *desc;
+
+	dev_dbg(chan_dev, "\n");
+
+	if (type >= UNKNOWN_TRANSACTION)
+		return NULL;
+
+	if (type == MEMCPY)
+		if (len > SWITCHTEC_DESC_MAX_SIZE)
+			return NULL;
+
+	if (!swdma_chan->ring_active)
+		return NULL;
+
+	if (!CIRC_SPACE(swdma_chan->head, swdma_chan->tail,
+			SWITCHTEC_DMA_RING_SIZE))
+		return NULL;
+
+	spin_lock_bh(&swdma_chan->ring_lock);
+
+	desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->head);
+	swdma_chan->head++;
+
+	if (swdma_chan->head == SWITCHTEC_DMA_RING_SIZE)
+		swdma_chan->head = 0;
+
+	if (src_fid != SWITCHTEC_INVALID_HFID &&
+	    dst_fid != SWITCHTEC_INVALID_HFID)
+		desc->hw->ctrl |= SWITCHTEC_SE_DFM;
+
+	if (flags & DMA_PREP_INTERRUPT)
+		desc->hw->ctrl |= SWITCHTEC_SE_LIOF;
+
+	if (flags & DMA_PREP_FENCE)
+		desc->hw->ctrl |= SWITCHTEC_SE_BRR;
+
+	desc->txd.flags = flags;
+
+	desc->completed = false;
+	if (type == MEMCPY) {
+		desc->hw->opc = SWITCHTEC_DMA_OPC_MEMCPY;
+		desc->hw->saddr_lo = cpu_to_le32(lower_32_bits(dma_src));
+		desc->hw->saddr_hi = cpu_to_le32(upper_32_bits(dma_src));
+	} else {
+		desc->hw->opc = SWITCHTEC_DMA_OPC_WRIMM;
+		desc->hw->widata_lo = cpu_to_le32(lower_32_bits(data));
+		desc->hw->widata_hi = cpu_to_le32(upper_32_bits(data));
+	}
+	desc->hw->daddr_lo = cpu_to_le32(lower_32_bits(dma_dst));
+	desc->hw->daddr_hi = cpu_to_le32(upper_32_bits(dma_dst));
+	desc->hw->byte_cnt = cpu_to_le32(len);
+	desc->hw->tlp_setting = 0;
+	desc->hw->dfid = cpu_to_le16(dst_fid);
+	desc->hw->sfid = cpu_to_le16(src_fid);
+	swdma_chan->cid &= SWITCHTEC_SE_CID_MASK;
+	desc->hw->cid = cpu_to_le16(swdma_chan->cid++);
+	desc->index = swdma_chan->head;
+	desc->orig_size = len;
+
+	if (type == MEMCPY) {
+		dev_dbg(chan_dev, "SE (cid: %x):\n", desc->hw->cid);
+		dev_dbg(chan_dev, "    type:       MEMCPY\n");
+		dev_dbg(chan_dev, "    src addr:   0x%08x_%08x\n",
+			desc->hw->saddr_hi, desc->hw->saddr_lo);
+	} else {
+		dev_dbg(chan_dev, "SE (cid: %x):\n", desc->hw->cid);
+		dev_dbg(chan_dev, "    type:       WIMM\n");
+		dev_dbg(chan_dev, "    WIMM data:  0x%08x_%08x\n",
+			desc->hw->widata_hi, desc->hw->widata_lo);
+	}
+	dev_dbg(chan_dev, "    dst addr:   0x%08x_%08x\n",
+		desc->hw->daddr_hi, desc->hw->daddr_lo);
+	dev_dbg(chan_dev, "    byte count: 0x%08x\n", desc->hw->byte_cnt);
+	dev_dbg(chan_dev, "    src DFID:   0x%04x\n", desc->hw->sfid);
+	dev_dbg(chan_dev, "    dst DFID:   0x%04x\n", desc->hw->dfid);
+
+	/* return with the lock held, it will be released in tx_submit */
+
+	return &desc->txd;
+}
+
 static struct dma_async_tx_descriptor *__switchtec_dma_prep_memcpy(
 		struct dma_chan *c, u16 dst_fid, dma_addr_t dma_dst,
 		u16 src_fid, dma_addr_t dma_src, size_t len,
