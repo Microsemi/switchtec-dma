@@ -924,9 +924,9 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 		size_t len, unsigned long flags)
 {
 
-	return __switchtec_dma_prep_memcpy(c, SWITCHTEC_INVALID_HFID, dma_dst,
-					   SWITCHTEC_INVALID_HFID, dma_src, len,
-					   flags);
+	return switchtec_dma_prep_desc(c, MEMCPY, SWITCHTEC_INVALID_HFID,
+				       dma_dst, SWITCHTEC_INVALID_HFID, dma_src,
+				       0, len, flags);
 }
 
 struct dma_async_tx_descriptor *__switchtec_dma_prep_wimm_data(
@@ -1007,9 +1007,9 @@ struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
 		struct dma_chan *c, dma_addr_t dst, u64 data,
 		unsigned long flags)
 {
-	return __switchtec_dma_prep_wimm_data(c, SWITCHTEC_INVALID_HFID,
-					      dst, SWITCHTEC_INVALID_HFID,
-					      data, sizeof(data), flags);
+	return switchtec_dma_prep_desc(c, WIMM, SWITCHTEC_INVALID_HFID, dst,
+				       SWITCHTEC_INVALID_HFID, 0, data,
+				       sizeof(data), flags);
 }
 
 static dma_cookie_t switchtec_dma_tx_submit(
@@ -2622,8 +2622,8 @@ struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_memcpy(
 		u16 src_fid, dma_addr_t dma_src, size_t len,
 		unsigned long flags)
 {
-	return __switchtec_dma_prep_memcpy(c, dst_fid, dma_dst, src_fid,
-					   dma_src, len, flags);
+	return switchtec_dma_prep_desc(c, MEMCPY, dst_fid, dma_dst, src_fid,
+				       dma_src, 0, len, flags);
 }
 EXPORT_SYMBOL(switchtec_fabric_dma_prep_memcpy);
 
@@ -2636,9 +2636,9 @@ struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_rhi(
 	dma_addr_t dst_addr = RHI_BASE_ADDR + rhi_index * 4;
 	u32 data = RHI_DATA;
 
-	return __switchtec_dma_prep_wimm_data(dma_chan, peer_rhi_dfid, dst_addr,
-					      local_rhi_dfid, data,
-					      sizeof(data), 0);
+	return switchtec_dma_prep_desc(dma_chan, WIMM, peer_rhi_dfid, dst_addr,
+				       local_rhi_dfid, 0, data, sizeof(data),
+				       0);
 }
 EXPORT_SYMBOL(switchtec_fabric_dma_prep_rhi);
 
@@ -2646,9 +2646,8 @@ struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_wimm_data(
 		struct dma_chan *dma_chan, u16 dst_dfid, dma_addr_t dst,
 		u16 src_dfid, u64 data, unsigned long flags)
 {
-	return __switchtec_dma_prep_wimm_data(dma_chan, dst_dfid, dst,
-					      src_dfid, data, sizeof(data),
-					      flags);
+	return switchtec_dma_prep_desc(dma_chan, WIMM, dst_dfid, dst, src_dfid,
+				       0, data, sizeof(data), flags);
 }
 EXPORT_SYMBOL(switchtec_fabric_dma_prep_wimm_data);
 
