@@ -2448,7 +2448,7 @@ static void switchtec_dma_fabric_event_task(unsigned long data)
 		swdma_dev->eq_tail &= SWITCHTEC_DMA_EQ_SIZE - 1;
 	}
 
-	writeq(swdma_dev->eq_tail,
+	writel(swdma_dev->eq_tail,
 	       &swdma_dev->mmio_fabric_ctrl->event_queue_tail);
 
 	return;
