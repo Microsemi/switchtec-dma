@@ -218,7 +218,6 @@ struct switchtec_dma_dev {
 	struct switchtec_dma_chan **swdma_chans;
 	int chan_cnt;
 
-	int int_error_irq;
 	int chan_status_irq;
 
 	struct dmac_version_regs __iomem *mmio_dmac_ver;
@@ -603,33 +602,6 @@ static void switchtec_dma_desc_task(unsigned long data)
 	switchtec_dma_process_desc(swdma_chan);
 }
 
-static void switchtec_dma_int_error_task(unsigned long data)
-{
-	struct switchtec_dma_dev *swdma_dev = (void *)data;
-	u32 err;
-
-	err = readl(&swdma_dev->mmio_dmac_status->internal_err);
-
-	if (err & IER_OB_PF_RD_ERR_I)
-		dev_err(&swdma_dev->pdev->dev,
-			"IER: Inbound Buffer received a TLP flagged with IER.");
-	if (err & IER_OB_TLP_RD_ERR_I)
-		dev_err(&swdma_dev->pdev->dev,
-			"IER: Outbound TLP read error (ECC error).");
-	if (err & IER_ECC_ER_0_I)
-		dev_err(&swdma_dev->pdev->dev,
-			"IER: Uncorrectable ECC error interrupt from RAMs in ECC_ERR_RAM_SEL_0.");
-	if (err & IER_ECC_ER_1_I)
-		dev_err(&swdma_dev->pdev->dev,
-			"IER: Uncorrectable ECC error interrupt from RAMs in ECC_ERR_RAM_SEL_1.");
-	if (err & IER_PARITY_ERR_I)
-		dev_err(&swdma_dev->pdev->dev,
-			"IER: Uncorrectable parity error interrupt from ISP_DMAC.");
-	if (err & IER_IB_IER_I)
-		dev_err(&swdma_dev->pdev->dev,
-			"IER: Inbound Buffer received a TLP flagged with IER.");
-}
-
 static void switchtec_dma_chan_status_task(unsigned long data)
 {
 	struct switchtec_dma_dev *swdma_dev = (void *)data;
@@ -870,15 +842,6 @@ static irqreturn_t switchtec_dma_isr(int irq, void *chan)
 
 	if (swdma_chan->ring_active)
 		tasklet_schedule(&swdma_chan->desc_task);
-
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t switchtec_dma_int_error_isr(int irq, void *dma)
-{
-	struct switchtec_dma_dev *swdma_dev = dma;
-
-	tasklet_schedule(&swdma_dev->int_error_task);
 
 	return IRQ_HANDLED;
 }
@@ -1938,20 +1901,9 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 		goto err_exit;
 	}
 
-	tasklet_init(&swdma_dev->int_error_task,
-		     switchtec_dma_int_error_task,
-		     (unsigned long)swdma_dev);
-
 	tasklet_init(&swdma_dev->chan_status_task,
 		     switchtec_dma_chan_status_task,
 		     (unsigned long)swdma_dev);
-
-	rc = devm_request_irq(dev, irq, switchtec_dma_int_error_isr, 0,
-			      KBUILD_MODNAME, swdma_dev);
-	if (rc)
-		goto err_exit;
-
-	swdma_dev->int_error_irq = irq;
 
 	irq = readw(&swdma_dev->mmio_dmac_cap->chan_sts_vec);
 	dev_dbg(dev, "Channel status irq vec 0x%x\n", irq);
@@ -2024,9 +1976,6 @@ static int switchtec_dma_create(struct pci_dev *pdev)
 	return 0;
 
 err_exit:
-	if (swdma_dev->int_error_irq)
-		devm_free_irq(dev, swdma_dev->int_error_irq, swdma_dev);
-
 	if (swdma_dev->chan_status_irq)
 		devm_free_irq(dev, swdma_dev->chan_status_irq, swdma_dev);
 
@@ -2086,7 +2035,6 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 	rcu_assign_pointer(swdma_dev->pdev, NULL);
 	synchronize_rcu();
 
-	devm_free_irq(dev, swdma_dev->int_error_irq, swdma_dev);
 	devm_free_irq(dev, swdma_dev->chan_status_irq, swdma_dev);
 
 	pci_free_irq_vectors(pdev);
