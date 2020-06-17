@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# This is an example script for loading initiator, please update before running
-# on your platform.
+# This is an example script for loading target, please update before running on
+# your platform.
 #
 
 #
