@@ -2477,14 +2477,14 @@ EXPORT_SYMBOL(switchtec_fabric_dma_prep_memcpy);
 #define RHI_DATA 0xffffffff
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_rhi(
 		struct dma_chan *dma_chan, u16 peer_rhi_dfid, u16 rhi_index,
-		u16 local_rhi_dfid)
+		u16 local_rhi_dfid, unsigned long flags)
 {
 	dma_addr_t dst_addr = RHI_BASE_ADDR + rhi_index * 4;
 	u32 data = RHI_DATA;
 
 	return switchtec_dma_prep_desc(dma_chan, WIMM, peer_rhi_dfid, dst_addr,
 				       local_rhi_dfid, 0, data, sizeof(data),
-				       0);
+				       flags);
 }
 EXPORT_SYMBOL(switchtec_fabric_dma_prep_rhi);
 

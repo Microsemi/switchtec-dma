@@ -349,7 +349,8 @@ static int __init dma_client_init(void)
 	printk("RHI to spd buf.\n");
 	tx = switchtec_fabric_dma_prep_rhi(dma_chan, spd_buf->remote_rhi_dfid,
 					   spd_buf->rhi_index,
-					   spd_buf->local_rhi_dfid);
+					   spd_buf->local_rhi_dfid,
+					   DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
 	if (!tx) {
 		ret = -EIO;
 		goto err_free_resource;

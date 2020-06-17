@@ -147,7 +147,7 @@ struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_memcpy(
 		unsigned long flags);
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_rhi(
 		struct dma_chan *dma_chan, u16 peer_rhi_dfid, u16 rhi_index,
-		u16 local_rhi_dfid);
+		u16 local_rhi_dfid, unsigned long flags);
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_wimm_data(
 		struct dma_chan *dma_chan, u16 dst_dfid, dma_addr_t dst,
 		u16 src_dfid, u64 data, unsigned long flags);
