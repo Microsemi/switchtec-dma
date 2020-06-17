@@ -22,9 +22,9 @@ peer_hfid=0x0a01
 timeout=5
 
 if [ $need_tune -ne 0 ]; then
-	echo 
+	echo
 	echo "Please tune script parameters before running on your platform!"
-	echo 
+	echo
 	exit 1
 fi
 

@@ -16,9 +16,9 @@ dma_device=dma16
 peer_hfid=0x0a02
 
 if [ $need_tune -ne 0 ]; then
-	echo 
+	echo
 	echo "Please tune script parameters before running on your platform!"
-	echo 
+	echo
 	exit 1
 fi
 
