@@ -94,9 +94,22 @@ enum switchtec_fabric_event_type {
 	SWITCHTEC_FABRIC_EVENT_OVERFLOW,
 };
 
+/**
+ * struct switchtec_fabric_event - fabric event
+ * @type: event type
+ * @reg_buf_data: register buffer event data structure
+ * @unreg_buf_data: unregister buffer event data structure
+ * @data: raw event data
+ */
 struct switchtec_fabric_event {
 	enum switchtec_fabric_event_type type;
 	union {
+		/**
+		 * struct switchtec_fabric_event - register buffer event data
+		 * @hfid: hfid from which this buffer is registered
+		 * @rhi_index: RHI index for this buffer
+		 * @index: buffer index
+		 */
 		struct register_buf_data {
 			u16 hfid;
 			u16 rhi_index;
@@ -104,6 +117,11 @@ struct switchtec_fabric_event {
 			u8 rsvd[3];
 		} reg_buf_data;
 
+		/**
+		 * struct switchtec_fabric_event - register buffer event data
+		 * @hfid: hfid from which this buffer is registered
+		 * @index: buffer index
+		 */
 		struct unregister_buf_data {
 			u16 hfid;
 			u8 index;
