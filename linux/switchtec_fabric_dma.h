@@ -114,7 +114,7 @@ struct switchtec_fabric_event {
 	};
 };
 
-bool is_switchtec_fabric(struct dma_chan *chan);
+bool is_switchtec_fabric(struct dma_chan *c);
 struct dma_device *switchtec_fabric_get_dma_device(char *name);
 int switchtec_fabric_put_dma_device(struct dma_device *dma_dev);
 int switchtec_fabric_get_pax_count(struct dma_device *dma_dev);
@@ -130,7 +130,7 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 				     int *cookie);
 int switchtec_fabric_unregister_buffer(struct dma_device *dma_dev,
 				       u16 peer_hfid, u8 buf_index, int cookie);
-int switchtec_fabric_get_peer_buffers(struct dma_device *dma_dev, u16 hfid,
+int switchtec_fabric_get_peer_buffers(struct dma_device *dma_dev, u16 peer_hfid,
 				      int buf_num,
 				      struct switchtec_buffer *bufs);
 int switchtec_fabric_get_buffer_number(struct dma_device *dma_dev);
@@ -142,13 +142,13 @@ int switchtec_fabric_unregister_event_notify(struct dma_device *dma_dev,
 					     struct notifier_block *nb);
 
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_memcpy(
-		struct dma_chan *c, u16 dst_fid, dma_addr_t dma_dst,
-		u16 src_fid, dma_addr_t dma_src, size_t len,
+		struct dma_chan *c, u16 dst_dfid, dma_addr_t dma_dst,
+		u16 src_dfid, dma_addr_t dma_src, size_t len,
 		unsigned long flags);
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_rhi(
-		struct dma_chan *dma_chan, u16 peer_rhi_dfid, u16 rhi_index,
-		u16 local_rhi_dfid, unsigned long flags);
+		struct dma_chan *c, u16 peer_dfid, u16 rhi_index,
+		u16 local_dfid, unsigned long flags);
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_wimm_data(
-		struct dma_chan *dma_chan, u16 dst_dfid, dma_addr_t dst,
-		u16 src_dfid, u64 data, unsigned long flags);
+		struct dma_chan *c, u16 peer_dfid, dma_addr_t dma_dst,
+		u16 local_dfid, u64 data, unsigned long flags);
 #endif
