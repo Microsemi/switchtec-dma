@@ -104,7 +104,28 @@ struct dmac_fabric_control_regs {
 #define SWITCHTEC_CHAN_CTRL_RESET     BIT(2)
 #define SWITCHTEC_CHAN_CTRL_ERR_PAUSE BIT(3)
 
-#define SWITCHTEC_CHAN_STS_HALTED     BIT(10)
+#define SWITCHTEC_CHAN_STS_HALTED      BIT(10)
+#define SWITCHTEC_CHAN_STS_PAUSED_MASK GENMASK(29, 13)
+
+const char *channel_status_str[] = {
+	[13] = "received a VDM with length error status",
+	[14] = "received a VDM or Cpl with Unsupported Request error status",
+	[15] = "received a VDM or Cpl with Completion Abort error status",
+	[16] = "received a VDM with ECRC error status",
+	[17] = "received a VDM with EP error status",
+	[18] = "received a VDM with Reserved Cpl error status",
+	[19] = "received only part of split SE CplD",
+	[20] = "the ISP_DMAC detected a Completion Time Out",
+	[21] = "received a Cpl with Unsupported Request status",
+	[22] = "received a Cpl with Completion Abort status",
+	[23] = "received a Cpl with a reserved status",
+	[24] = "received a TLP with ECRC error status in its metadata",
+	[25] = "received a TLP with the EP bit set in the header",
+	[26] = "the ISP_DMAC tried to process a SE with an invalid Connection ID",
+	[27] = "the ISP_DMAC tried to process a SE with an invalid Remote Host interrupt",
+	[28] = "a reserved opcode was detected in an SE",
+	[29] = "received a SE Cpl with error status",
+};
 
 struct chan_hw_regs {
 	u16 cq_head;
@@ -481,11 +502,12 @@ static int reset_channel(struct switchtec_dma_chan *swdma_chan)
 	struct pci_dev *pdev = swdma_chan->swdma_dev->pdev;
 
 	ctrl = SWITCHTEC_CHAN_CTRL_RESET;
+	ctrl |= SWITCHTEC_CHAN_CTRL_ERR_PAUSE;
 	writel(ctrl, &chan_hw->ctrl);
 
 	msleep(1);
 
-	ctrl = 0;
+	ctrl = SWITCHTEC_CHAN_CTRL_ERR_PAUSE;
 	writel(ctrl, &chan_hw->ctrl);
 
 	pci_dbg(pdev, "chan %d: reset channel, ctrl 0x%x\n",
@@ -688,31 +710,26 @@ static void switchtec_dma_desc_task(unsigned long data)
 static void switchtec_dma_chan_status_task(unsigned long data)
 {
 	struct switchtec_dma_dev *swdma_dev = (void *)data;
+	struct dma_device *dma_dev = &swdma_dev->dma_dev;
+	struct dma_chan *chan;
 	struct switchtec_dma_chan *swdma_chan;
-	u64 halt_sum;
-	u64 pause_sum;
-	unsigned long i;
+	struct chan_hw_regs *chan_hw;
+	struct device *chan_dev;
+	u32 chan_status;
+	int bit;
 
-	halt_sum = readl(&swdma_dev->mmio_dmac_status->chan_halt_sum_hi);
-	halt_sum <<= 32;
-	halt_sum |= readl(&swdma_dev->mmio_dmac_status->chan_halt_sum_lo);
-
-	while (halt_sum) {
-		i = __ffs(halt_sum);
-		swdma_chan = swdma_dev->swdma_chans[i];
-		dev_info(&swdma_dev->pdev->dev, "chan %ld: halted", i);
-		clear_bit(i, (void *)&halt_sum);
-	}
-
-	pause_sum = readl(&swdma_dev->mmio_dmac_status->chan_pause_sum_hi);
-	pause_sum <<= 32;
-	pause_sum |= readl(&swdma_dev->mmio_dmac_status->chan_pause_sum_lo);
-
-	while (pause_sum) {
-		i = __ffs(pause_sum);
-		swdma_chan = swdma_dev->swdma_chans[i];
-		dev_info(&swdma_dev->pdev->dev, "chan %ld: paused", i);
-		clear_bit(i, (void *)&pause_sum);
+	list_for_each_entry(chan, &dma_dev->channels, device_node) {
+		swdma_chan = to_switchtec_dma_chan(chan);
+		chan_dev = to_chan_dev(swdma_chan);
+		chan_hw = swdma_chan->mmio_chan_hw;
+		chan_status = readl(&chan_hw->status);
+		chan_status &= SWITCHTEC_CHAN_STS_PAUSED_MASK;
+		bit = ffs(chan_status);
+		if (!bit)
+			dev_dbg(chan_dev, "No pause bit set.");
+		else
+			dev_err(chan_dev, "Paused, %s\n",
+				channel_status_str[bit - 1]);
 	}
 }
 
