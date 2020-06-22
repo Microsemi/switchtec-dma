@@ -743,6 +743,14 @@ struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 		if (len > SWITCHTEC_DESC_MAX_SIZE)
 			return NULL;
 
+	if ((type == WIMM) && (len == 8))
+		if (dma_dst & ((1 << DMAENGINE_ALIGN_8_BYTES) - 1)) {
+			dev_err(chan_dev,
+				"QW WIMM dst addr 0x%08x_%08x not QW aligned!\n",
+				upper_32_bits(dma_dst), lower_32_bits(dma_dst));
+			return NULL;
+		}
+
 	if (!swdma_chan->ring_active)
 		return NULL;
 
