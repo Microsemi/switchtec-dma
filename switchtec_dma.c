@@ -2613,15 +2613,6 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 		goto err_exit;
 	}
 
-	irq = readw(&swdma_dev->mmio_dmac_cap->int_err_vec);
-	dev_dbg(dev, "Internal error irq vec 0x%x\n", irq);
-
-	irq = pci_irq_vector(swdma_dev->pdev, irq);
-	if (irq < 0) {
-		rc = irq;
-		goto err_exit;
-	}
-
 	tasklet_init(&swdma_dev->chan_status_task,
 		     switchtec_dma_chan_status_task,
 		     (unsigned long)swdma_dev);
