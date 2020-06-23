@@ -7,10 +7,10 @@
 #
 # Update the value to 0 to run
 #
-need_tune=1
+need_tune=0
 
 # Specify DMA device and channel to use
-dma_device=dma16
+dma_device=dma2
 
 # Specify either peer_pax_id and peer_port_id, or peer_hfid
 peer_hfid=0x0a02
