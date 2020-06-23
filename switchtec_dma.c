@@ -646,6 +646,7 @@ static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
 		desc->txd.callback_result = NULL;
 
 		swdma_chan->tail++;
+		swdma_chan->tail &= SWITCHTEC_DMA_SQ_SIZE - 1;
 	}
 
 	spin_unlock_bh(&swdma_chan->ring_lock);
