@@ -915,7 +915,9 @@ static void switchtec_dma_issue_pending(struct dma_chan *chan)
 	 */
 	dev_dbg(to_chan_dev(swdma_chan), "HEAD 0x%x\n", swdma_chan->head);
 
+	spin_lock_bh(&swdma_chan->ring_lock);
 	writew(swdma_chan->head, &swdma_chan->mmio_chan_hw->sq_tail);
+	spin_unlock_bh(&swdma_chan->ring_lock);
 	dev_dbg(to_chan_dev(swdma_chan),
 		"Update SE HEAD 0x%x to firmware.\n", swdma_chan->head);
 	rcu_read_unlock();
