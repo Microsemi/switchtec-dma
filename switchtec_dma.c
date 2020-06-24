@@ -2092,28 +2092,35 @@ int switchtec_fabric_get_host_ports(struct dma_device *dma_dev, u8 pax_id,
 			u8 phys_pid;
 			u8 link_state;
 		} host_ports[SWITCHTEC_HOST_PORT_NUM_PER_PAX];
-	} rsp;
+	} *rsp;
 
 	if (!dma_dev || !is_fabric_dma(dma_dev))
 		return -EINVAL;
 
-	size = sizeof(rsp);
-	ret = execute_cmd(swdma_dev, CMD_GET_HOST_LIST, &pax_id, sizeof(pax_id),
-			  &rsp, &size);
-	if (ret < 0)
-		return ret;
+	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
+	if (!rsp)
+		return -ENOMEM;
 
-	rtn_port_num = port_num < rsp.host_port_num ? port_num :
-		       rsp.host_port_num;
+	size = sizeof(*rsp);
+	ret = execute_cmd(swdma_dev, CMD_GET_HOST_LIST, &pax_id, sizeof(pax_id),
+			  rsp, &size);
+	if (ret < 0)
+		goto out;
+
+	rtn_port_num = port_num < rsp->host_port_num ? port_num :
+		       rsp->host_port_num;
 
 	for (i = 0; i < rtn_port_num; i++) {
-		ports[i].hfid = le16_to_cpu(rsp.host_ports[i].hfid);
-		ports[i].pax_id = rsp.pax_id;
-		ports[i].phys_pid = rsp.host_ports[i].phys_pid;
-		ports[i].link_state = rsp.host_ports[i].link_state;
+		ports[i].hfid = le16_to_cpu(rsp->host_ports[i].hfid);
+		ports[i].pax_id = rsp->pax_id;
+		ports[i].phys_pid = rsp->host_ports[i].phys_pid;
+		ports[i].link_state = rsp->host_ports[i].link_state;
 	}
 
-	return rtn_port_num;
+	ret = rtn_port_num;
+out:
+	kfree(rsp);
+	return ret;
 }
 EXPORT_SYMBOL(switchtec_fabric_get_host_ports);
 
@@ -2277,21 +2284,25 @@ int switchtec_fabric_get_peer_buffers(struct dma_device *dma_dev, u16 peer_hfid,
 		u8 rsvd1[3];
 		u32 rsvd2;
 		struct buffer_entry bufs[SWITCHTEC_BUF_NUM_PER_HOST_PORT];
-	} rsp;
+	} *rsp;
 
 	if (!dma_dev || !is_fabric_dma(dma_dev))
 		return -EINVAL;
 
-	size = sizeof(rsp);
-	ret = execute_cmd(swdma_dev, CMD_GET_BUF_LIST, &peer_hfid,
-			  sizeof(peer_hfid), &rsp, &size);
-	if (ret < 0)
-		return ret;
+	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
+	if (!rsp)
+		return -ENOMEM;
 
-	rtn_buf_num = buf_num < rsp.buf_num ? buf_num : rsp.buf_num;
+	size = sizeof(*rsp);
+	ret = execute_cmd(swdma_dev, CMD_GET_BUF_LIST, &peer_hfid,
+			  sizeof(peer_hfid), rsp, &size);
+	if (ret < 0)
+		goto out;
+
+	rtn_buf_num = buf_num < rsp->buf_num ? buf_num : rsp->buf_num;
 	for (i = 0; i < rtn_buf_num; i++) {
 		struct switchtec_buffer *buf = &bufs[i];
-		struct buffer_entry *rsp_buf = &rsp.bufs[i];
+		struct buffer_entry *rsp_buf = &rsp->bufs[i];
 
 		buf->from_hfid = le16_to_cpu(rsp_buf->hfid);
 		buf->to_hfid = le16_to_cpu(swdma_dev->hfid);
@@ -2309,7 +2320,10 @@ int switchtec_fabric_get_peer_buffers(struct dma_device *dma_dev, u16 peer_hfid,
 		buf->remote_rhi_dfid = le16_to_cpu(rsp_buf->remote_rhi_dfid);
 	}
 
-	return rtn_buf_num;
+	ret = rtn_buf_num;
+out:
+	kfree(rsp);
+	return ret;
 }
 EXPORT_SYMBOL(switchtec_fabric_get_peer_buffers);
 
@@ -2358,30 +2372,34 @@ int switchtec_fabric_get_buffers(struct dma_device *dma_dev, int buf_num,
 		u8 rsvd[3];
 		struct buffer_entry bufs[(CMD_OUTPUT_SIZE - 8) /
 			sizeof(struct buffer_entry)];
-	} rsp;
+	} *rsp;
 
 	if (!dma_dev || !is_fabric_dma(dma_dev))
 		return -EINVAL;
 
+	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
+	if (!rsp)
+		return -ENOMEM;
+
 	i = 0;
 	do {
-		size = sizeof(rsp);
+		size = sizeof(*rsp);
 		ret = execute_cmd(swdma_dev, CMD_GET_OWN_BUF_LIST,
 				  &local_buf_index, sizeof(local_buf_index),
-				  &rsp, &size);
+				  rsp, &size);
 		if (ret < 0)
-			return ret;
+			goto out;
 
 		if (!rtn_buf_num) {
-			rtn_buf_num = buf_num < rsp.buf_num ? buf_num :
-				      rsp.buf_num;
+			rtn_buf_num = buf_num < rsp->buf_num ? buf_num :
+				      rsp->buf_num;
 			remain_buf_num = rtn_buf_num;
 		}
 
 		j = 0;
-		for (j = 0; j < rsp.rtn_buf_num; i++, j++) {
+		for (j = 0; j < rsp->rtn_buf_num; i++, j++) {
 			struct switchtec_buffer *buf = &bufs[i];
-			struct buffer_entry *rsp_buf = &rsp.bufs[j];
+			struct buffer_entry *rsp_buf = &rsp->bufs[j];
 
 			buf->from_hfid = le16_to_cpu(swdma_dev->hfid);
 			buf->to_hfid = le16_to_cpu(rsp_buf->hfid);
@@ -2407,7 +2425,10 @@ int switchtec_fabric_get_buffers(struct dma_device *dma_dev, int buf_num,
 		}
 	} while (remain_buf_num);
 
-	return rtn_buf_num;
+	ret = rtn_buf_num;
+out:
+	kfree(rsp);
+	return ret;
 }
 EXPORT_SYMBOL(switchtec_fabric_get_buffers);
 
