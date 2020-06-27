@@ -1,0 +1,4 @@
+LINUXINCLUDE := -I$(src) $(LINUXINCLUDE)
+
+obj-m := target.o initiator.o
+ccflags-y := -Wall -Werror -Werror=implicit-function-declaration
