@@ -1991,7 +1991,6 @@ struct dma_device *switchtec_fabric_get_dma_device(char *name)
 	list_for_each_entry(d, &dma_list, list) {
 		sprintf(dev_name, "dma%d", d->dma_dev.dev_id);
 		if (!strcmp(name, dev_name)) {
-			get_device(d->dma_dev.dev);
 			return &d->dma_dev;
 		}
 	}
@@ -2004,8 +2003,6 @@ int switchtec_fabric_put_dma_device(struct dma_device *dma_dev)
 {
 	if (!dma_dev || !is_fabric_dma(dma_dev))
 		return -EINVAL;
-
-	put_device(dma_dev->dev);
 
 	return 0;
 }
