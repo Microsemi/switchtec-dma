@@ -532,6 +532,21 @@ static int enable_channel(struct switchtec_dma_chan *swdma_chan)
 	return 0;
 }
 
+static int disable_channel(struct switchtec_dma_chan *swdma_chan)
+{
+	u32 valid_en_se;
+	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
+	struct pci_dev *pdev = swdma_chan->swdma_dev->pdev;
+
+	valid_en_se = readl(&chan_fw->valid_en_se);
+	valid_en_se &= ~SWITCHTEC_CHAN_ENABLE;
+
+	writel(valid_en_se, &chan_fw->valid_en_se);
+	pci_dbg(pdev, "chan %d: disable channel\n", swdma_chan->index);
+
+	return 0;
+}
+
 #define SWITCHTEC_DMA_SQ_SIZE SZ_32K
 #define SWITCHTEC_DMA_CQ_SIZE SZ_32K
 
@@ -1123,8 +1138,6 @@ static int switchtec_dma_alloc_chan_resources(struct dma_chan *chan)
 static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 {
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
-	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
-	u32 valid_en_se;
 	struct pci_dev *pdev;
 
 	dev_dbg(to_chan_dev(swdma_chan), "\n");
@@ -1147,14 +1160,7 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 
 	switchtec_dma_free_desc(swdma_chan);
 
-	/* Disable the channle */
-	valid_en_se = readl(&chan_fw->valid_en_se);
-	valid_en_se &= ~SWITCHTEC_CHAN_ENABLE;
-
-#if 0
-	writel(valid_en_se, &chan_fw->valid_en_se);
-
-#endif
+	disable_channel(swdma_chan);
 
 	switchtec_dma_put(swdma_chan->swdma_dev);
 }
