@@ -1342,6 +1342,7 @@ static ssize_t burst_scale_store(struct dma_chan *chan, const char *page,
 
 	rcu_read_lock();
 	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		ret = -ENODEV;
 		goto err_unlock;
 	}
 
