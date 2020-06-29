@@ -1317,10 +1317,17 @@ static ssize_t burst_scale_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 perf_cfg = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	perf_cfg = readl(&chan_fw->perf_cfg);
 	perf_cfg >>= PERF_BURST_SCALE_SHIFT;
 	perf_cfg &= PERF_BURST_SCALE_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", perf_cfg);
 }
 
@@ -1367,10 +1374,17 @@ static ssize_t burst_size_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 burst_size = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	burst_size = readl(&chan_fw->perf_cfg);
 	burst_size >>= PERF_BURST_SIZE_SHIFT;
 	burst_size &= PERF_BURST_SIZE_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", burst_size);
 }
 
@@ -1421,10 +1435,17 @@ static ssize_t arb_weight_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 weight = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	weight = readl(&chan_fw->perf_cfg);
 	weight >>= PERF_ARB_WEIGHT_SHIFT;
 	weight &= PERF_ARB_WEIGHT_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", weight);
 }
 
@@ -1472,10 +1493,17 @@ static ssize_t interval_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 interval = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	interval = readl(&chan_fw->perf_cfg);
 	interval >>= PERF_INTERVAL_SHIFT;
 	interval &= PERF_INTERVAL_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "%x\n", interval);
 }
 
@@ -1525,10 +1553,17 @@ static ssize_t mrrs_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 mrrs = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	mrrs = readl(&chan_fw->perf_cfg);
 	mrrs >>= PERF_MRRS_SHIFT;
 	mrrs &= PERF_MRRS_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", mrrs);
 }
 
@@ -1576,10 +1611,17 @@ static ssize_t se_count_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u64 count = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	count = le32_to_cpu(readl(&chan_fw->perf_fetched_se_cnt_hi));
 	count <<= 32;
 	count |= le32_to_cpu(readl(&chan_fw->perf_fetched_se_cnt_lo));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%llx\n", count);
 }
 
@@ -1606,8 +1648,15 @@ static ssize_t se_pending_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u16 count = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	count = le16_to_cpu(readl(&chan_fw->perf_se_pending));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", count);
 }
 
@@ -1619,8 +1668,15 @@ static ssize_t se_buf_empty_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u16 count = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	count = le16_to_cpu(readl(&chan_fw->perf_se_buf_empty));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", count);
 }
 
@@ -1632,8 +1688,15 @@ static ssize_t chan_idle_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 ratio = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	ratio = le32_to_cpu(readl(&chan_fw->perf_chan_idle));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", ratio);
 }
 
@@ -1658,8 +1721,15 @@ static ssize_t latency_min_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 lat = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	lat = le32_to_cpu(readl(&chan_fw->perf_lat_min));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", lat);
 }
 
@@ -1671,8 +1741,15 @@ static ssize_t latency_last_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 lat = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	lat = le32_to_cpu(readl(&chan_fw->perf_lat_last));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", lat);
 }
 
@@ -1683,6 +1760,12 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 lat = 0;
+
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
 
 	lat = le32_to_cpu(readl(&chan_fw->perf_latency_selector));
 
@@ -1721,6 +1804,7 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 
 	strcat(page, "\n");
 
+	rcu_read_unlock();
 	return strlen(page);
 }
 
