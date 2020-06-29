@@ -340,7 +340,6 @@ struct switchtec_dma_dev {
 	struct tasklet_struct fabric_event_task;
 	struct atomic_notifier_head event_notifier_list;
 
-	struct kref ref;
 	struct work_struct release_work;
 
 	struct list_head list;
@@ -957,40 +956,6 @@ static irqreturn_t switchtec_dma_chan_status_isr(int irq, void *dma)
 	return IRQ_HANDLED;
 }
 
-static void switchtec_dma_release_work(struct work_struct *work)
-{
-	struct switchtec_dma_dev *swdma_dev =
-		container_of(work,struct switchtec_dma_dev, release_work);
-
-	dev_dbg(swdma_dev->dma_dev.dev, "\n");
-
-	dma_async_device_unregister(&swdma_dev->dma_dev);
-//	switchtec_kobject_del(swdma_dev);
-	put_device(swdma_dev->dma_dev.dev);
-}
-
-static void switchtec_dma_release(struct kref *ref)
-{
-	struct switchtec_dma_dev *swdma_dev =
-		container_of(ref,struct switchtec_dma_dev, ref);
-
-	dev_dbg(swdma_dev->dma_dev.dev, "\n");
-	/*
-	 * The dmaengine reference counting and locking is a bit of a
-	 * mess so we have to work around it a bit here. We might put
-	 * the reference while the dmaengine holds the dma_list_mutex
-	 * which means we can't call dma_async_device_unregister() directly
-	 * here and it must be delayed.
-	 */
-	schedule_work(&swdma_dev->release_work);
-}
-
-static void switchtec_dma_put(struct switchtec_dma_dev *swdma_dev)
-{
-	dev_dbg(swdma_dev->dma_dev.dev, "\n");
-	kref_put(&swdma_dev->ref, switchtec_dma_release);
-}
-
 static void switchtec_dma_free_desc(struct switchtec_dma_chan *swdma_chan)
 {
 	int i;
@@ -1096,11 +1061,8 @@ static int switchtec_dma_alloc_chan_resources(struct dma_chan *chan)
 		return -ENODEV;
 	}
 
-	kref_get(&swdma_dev->ref);
-
 	rc = switchtec_dma_alloc_desc(swdma_chan);
 	if (rc) {
-		switchtec_dma_put(swdma_dev);
 		rcu_read_unlock();
 		return rc;
 	}
@@ -1161,8 +1123,6 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 	switchtec_dma_free_desc(swdma_chan);
 
 	disable_channel(swdma_chan);
-
-	switchtec_dma_put(swdma_chan->swdma_dev);
 }
 
 #define SWITCHTEC_DMA_CHAN_HW_REGS_SIZE 0x1000
@@ -2716,9 +2676,6 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	dma_cap_set(DMA_PRIVATE, dma->cap_mask);
 	dma->dev = get_device(&pdev->dev);
 
-	kref_init(&swdma_dev->ref);
-	INIT_WORK(&swdma_dev->release_work, switchtec_dma_release_work);
-
 	dma->device_alloc_chan_resources = switchtec_dma_alloc_chan_resources;
 	dma->device_free_chan_resources = switchtec_dma_free_chan_resources;
 	dma->device_prep_dma_memcpy = switchtec_dma_prep_memcpy;
@@ -2822,12 +2779,8 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 
 	pci_free_irq_vectors(pdev);
 
-#if 0
-	switchtec_dma_put(swdma_dev);
-#else
 	dma_async_device_unregister(&swdma_dev->dma_dev);
 	put_device(swdma_dev->dma_dev.dev);
-#endif
 
 	pci_info(pdev, "Switchtec DMA Channels Unregistered\n");
 }
