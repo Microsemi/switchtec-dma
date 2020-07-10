@@ -1655,7 +1655,7 @@ static ssize_t se_pending_show(struct dma_chan *chan, char *page)
 		return -ENODEV;
 	}
 
-	count = le16_to_cpu(readl(&chan_fw->perf_se_pending));
+	count = le16_to_cpu(readw(&chan_fw->perf_se_pending));
 
 	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", count);
@@ -1675,7 +1675,7 @@ static ssize_t se_buf_empty_show(struct dma_chan *chan, char *page)
 		return -ENODEV;
 	}
 
-	count = le16_to_cpu(readl(&chan_fw->perf_se_buf_empty));
+	count = le16_to_cpu(readw(&chan_fw->perf_se_buf_empty));
 
 	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", count);
