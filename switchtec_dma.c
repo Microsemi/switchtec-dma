@@ -340,7 +340,6 @@ struct switchtec_dma_dev {
 	struct tasklet_struct fabric_event_task;
 	struct atomic_notifier_head event_notifier_list;
 
-	struct kref ref;
 	struct work_struct release_work;
 
 	struct list_head list;
@@ -528,6 +527,21 @@ static int enable_channel(struct switchtec_dma_chan *swdma_chan)
 	writel(valid_en_se, &chan_fw->valid_en_se);
 	pci_dbg(pdev, "chan %d: enable channel, valid_en_se 0x%x\n",
 		swdma_chan->index, valid_en_se);
+
+	return 0;
+}
+
+static int disable_channel(struct switchtec_dma_chan *swdma_chan)
+{
+	u32 valid_en_se;
+	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
+	struct pci_dev *pdev = swdma_chan->swdma_dev->pdev;
+
+	valid_en_se = readl(&chan_fw->valid_en_se);
+	valid_en_se &= ~SWITCHTEC_CHAN_ENABLE;
+
+	writel(valid_en_se, &chan_fw->valid_en_se);
+	pci_dbg(pdev, "chan %d: disable channel\n", swdma_chan->index);
 
 	return 0;
 }
@@ -942,40 +956,6 @@ static irqreturn_t switchtec_dma_chan_status_isr(int irq, void *dma)
 	return IRQ_HANDLED;
 }
 
-static void switchtec_dma_release_work(struct work_struct *work)
-{
-	struct switchtec_dma_dev *swdma_dev =
-		container_of(work,struct switchtec_dma_dev, release_work);
-
-	dev_dbg(swdma_dev->dma_dev.dev, "\n");
-
-	dma_async_device_unregister(&swdma_dev->dma_dev);
-//	switchtec_kobject_del(swdma_dev);
-	put_device(swdma_dev->dma_dev.dev);
-}
-
-static void switchtec_dma_release(struct kref *ref)
-{
-	struct switchtec_dma_dev *swdma_dev =
-		container_of(ref,struct switchtec_dma_dev, ref);
-
-	dev_dbg(swdma_dev->dma_dev.dev, "\n");
-	/*
-	 * The dmaengine reference counting and locking is a bit of a
-	 * mess so we have to work around it a bit here. We might put
-	 * the reference while the dmaengine holds the dma_list_mutex
-	 * which means we can't call dma_async_device_unregister() directly
-	 * here and it must be delayed.
-	 */
-	schedule_work(&swdma_dev->release_work);
-}
-
-static void switchtec_dma_put(struct switchtec_dma_dev *swdma_dev)
-{
-	dev_dbg(swdma_dev->dma_dev.dev, "\n");
-	kref_put(&swdma_dev->ref, switchtec_dma_release);
-}
-
 static void switchtec_dma_free_desc(struct switchtec_dma_chan *swdma_chan)
 {
 	int i;
@@ -1081,11 +1061,8 @@ static int switchtec_dma_alloc_chan_resources(struct dma_chan *chan)
 		return -ENODEV;
 	}
 
-	kref_get(&swdma_dev->ref);
-
 	rc = switchtec_dma_alloc_desc(swdma_chan);
 	if (rc) {
-		switchtec_dma_put(swdma_dev);
 		rcu_read_unlock();
 		return rc;
 	}
@@ -1123,8 +1100,6 @@ static int switchtec_dma_alloc_chan_resources(struct dma_chan *chan)
 static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 {
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
-	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
-	u32 valid_en_se;
 	struct pci_dev *pdev;
 
 	dev_dbg(to_chan_dev(swdma_chan), "\n");
@@ -1147,16 +1122,7 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 
 	switchtec_dma_free_desc(swdma_chan);
 
-	/* Disable the channle */
-	valid_en_se = readl(&chan_fw->valid_en_se);
-	valid_en_se &= ~SWITCHTEC_CHAN_ENABLE;
-
-#if 0
-	writel(valid_en_se, &chan_fw->valid_en_se);
-
-#endif
-
-	switchtec_dma_put(swdma_chan->swdma_dev);
+	disable_channel(swdma_chan);
 }
 
 #define SWITCHTEC_DMA_CHAN_HW_REGS_SIZE 0x1000
@@ -1351,10 +1317,17 @@ static ssize_t burst_scale_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 perf_cfg = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	perf_cfg = readl(&chan_fw->perf_cfg);
 	perf_cfg >>= PERF_BURST_SCALE_SHIFT;
 	perf_cfg &= PERF_BURST_SCALE_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", perf_cfg);
 }
 
@@ -1369,6 +1342,7 @@ static ssize_t burst_scale_store(struct dma_chan *chan, const char *page,
 
 	rcu_read_lock();
 	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		ret = -ENODEV;
 		goto err_unlock;
 	}
 
@@ -1401,10 +1375,17 @@ static ssize_t burst_size_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 burst_size = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	burst_size = readl(&chan_fw->perf_cfg);
 	burst_size >>= PERF_BURST_SIZE_SHIFT;
 	burst_size &= PERF_BURST_SIZE_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", burst_size);
 }
 
@@ -1455,10 +1436,17 @@ static ssize_t arb_weight_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 weight = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	weight = readl(&chan_fw->perf_cfg);
 	weight >>= PERF_ARB_WEIGHT_SHIFT;
 	weight &= PERF_ARB_WEIGHT_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", weight);
 }
 
@@ -1506,10 +1494,17 @@ static ssize_t interval_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 interval = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	interval = readl(&chan_fw->perf_cfg);
 	interval >>= PERF_INTERVAL_SHIFT;
 	interval &= PERF_INTERVAL_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "%x\n", interval);
 }
 
@@ -1559,10 +1554,17 @@ static ssize_t mrrs_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 mrrs = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	mrrs = readl(&chan_fw->perf_cfg);
 	mrrs >>= PERF_MRRS_SHIFT;
 	mrrs &= PERF_MRRS_MASK;
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", mrrs);
 }
 
@@ -1610,10 +1612,17 @@ static ssize_t se_count_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u64 count = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	count = le32_to_cpu(readl(&chan_fw->perf_fetched_se_cnt_hi));
 	count <<= 32;
 	count |= le32_to_cpu(readl(&chan_fw->perf_fetched_se_cnt_lo));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%llx\n", count);
 }
 
@@ -1640,8 +1649,15 @@ static ssize_t se_pending_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u16 count = 0;
 
-	count = le16_to_cpu(readl(&chan_fw->perf_se_pending));
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
 
+	count = le16_to_cpu(readw(&chan_fw->perf_se_pending));
+
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", count);
 }
 
@@ -1653,8 +1669,15 @@ static ssize_t se_buf_empty_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u16 count = 0;
 
-	count = le16_to_cpu(readl(&chan_fw->perf_se_buf_empty));
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
 
+	count = le16_to_cpu(readw(&chan_fw->perf_se_buf_empty));
+
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", count);
 }
 
@@ -1666,8 +1689,15 @@ static ssize_t chan_idle_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 ratio = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	ratio = le32_to_cpu(readl(&chan_fw->perf_chan_idle));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", ratio);
 }
 
@@ -1692,8 +1722,15 @@ static ssize_t latency_min_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 lat = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	lat = le32_to_cpu(readl(&chan_fw->perf_lat_min));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", lat);
 }
 
@@ -1705,8 +1742,15 @@ static ssize_t latency_last_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 lat = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	lat = le32_to_cpu(readl(&chan_fw->perf_lat_last));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", lat);
 }
 
@@ -1717,6 +1761,12 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
 	struct chan_fw_regs *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 lat = 0;
+
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
 
 	lat = le32_to_cpu(readl(&chan_fw->perf_latency_selector));
 
@@ -1755,6 +1805,7 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 
 	strcat(page, "\n");
 
+	rcu_read_unlock();
 	return strlen(page);
 }
 
@@ -2025,7 +2076,6 @@ struct dma_device *switchtec_fabric_get_dma_device(char *name)
 	list_for_each_entry(d, &dma_list, list) {
 		sprintf(dev_name, "dma%d", d->dma_dev.dev_id);
 		if (!strcmp(name, dev_name)) {
-			get_device(d->dma_dev.dev);
 			return &d->dma_dev;
 		}
 	}
@@ -2038,8 +2088,6 @@ int switchtec_fabric_put_dma_device(struct dma_device *dma_dev)
 {
 	if (!dma_dev || !is_fabric_dma(dma_dev))
 		return -EINVAL;
-
-	put_device(dma_dev->dev);
 
 	return 0;
 }
@@ -2710,9 +2758,6 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	dma_cap_set(DMA_PRIVATE, dma->cap_mask);
 	dma->dev = get_device(&pdev->dev);
 
-	kref_init(&swdma_dev->ref);
-	INIT_WORK(&swdma_dev->release_work, switchtec_dma_release_work);
-
 	dma->device_alloc_chan_resources = switchtec_dma_alloc_chan_resources;
 	dma->device_free_chan_resources = switchtec_dma_free_chan_resources;
 	dma->device_prep_dma_memcpy = switchtec_dma_prep_memcpy;
@@ -2816,12 +2861,8 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 
 	pci_free_irq_vectors(pdev);
 
-#if 0
-	switchtec_dma_put(swdma_dev);
-#else
 	dma_async_device_unregister(&swdma_dev->dma_dev);
 	put_device(swdma_dev->dma_dev.dev);
-#endif
 
 	pci_info(pdev, "Switchtec DMA Channels Unregistered\n");
 }
