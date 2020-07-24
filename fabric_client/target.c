@@ -132,12 +132,13 @@ static int __init dma_client_init(void)
 	/*
 	 * Register spd DMA buffer to buffer slot 0 @ peer host
 	 */
-	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid, 0,
+	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid,
+					       SCRATCHPAD_BUFFER_INDEX,
 					       spd_buf_dma_addr, spd_buf_size,
 					       &spd_cookie);
 	if (ret < 0) {
-		printk("Failed to register spd DMA buffer to slot 0 @ peer 0x04%x.\n",
-		       peer_hfid);
+		printk("Failed to register spd DMA buffer to slot %d @ peer 0x04%x.\n",
+		       SCRATCHPAD_BUFFER_INDEX, peer_hfid);
 		ret = -ENXIO;
 		goto err_free_resource;
 	}
@@ -158,12 +159,12 @@ static int __init dma_client_init(void)
 	/*
 	 * Register data DMA buffer to buffer slot 1 @ peer host
 	 */
-	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid, 1,
+	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid, DATA_BUFFER_INDEX,
 					       data_buf_dma_addr, data_buf_size,
 					       &data_cookie);
 	if (ret < 0) {
-		printk("Failed to register data DMA buffer to slot 1 @ peer 0x04%x.\n",
-		       peer_hfid);
+		printk("Failed to register data DMA buffer to slot %d @ peer 0x04%x.\n",
+		       DATA_BUFFER_INDEX, peer_hfid);
 		ret = -ENXIO;
 		goto err_free_resource;
 	}
