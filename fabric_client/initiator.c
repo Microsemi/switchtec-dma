@@ -90,6 +90,7 @@ static int event_notify(struct notifier_block *self,
 	struct switchtec_fabric_event *e = event;
 
 	if ((e->reg_buf_data.hfid == peer_hfid) &&
+	    (e->reg_buf_data.index == DATA_BUFFER_INDEX) &&
 	    (event_type == SWITCHTEC_FABRIC_REGISTER_BUFFER))
 		complete(&event_comp);
 
