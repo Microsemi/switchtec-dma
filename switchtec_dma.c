@@ -257,8 +257,6 @@ struct switchtec_dma_chan {
 	int index;
 	int irq;
 
-	int initialized;
-
 	/*
 	 * In driver context, head is advanced by producer while
 	 * tail is advanced by consumer.
@@ -1228,7 +1226,6 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 
 	swdma_chan->is_fabric = swdma_dev->is_fabric;
 	list_add_tail(&swdma_chan->list, &chan_list);
-	swdma_chan->initialized = 1;
 
 	return 0;
 }
@@ -1241,7 +1238,6 @@ static int switchtec_dma_chan_free(struct switchtec_dma_chan *swdma_chan)
 	struct device *dev = &swdma_chan->swdma_dev->pdev->dev;
 	spin_lock_bh(&swdma_chan->submit_lock);
 	swdma_chan->ring_active = false;
-	swdma_chan->initialized = false;
 	spin_unlock_bh(&swdma_chan->submit_lock);
 
 	dev_dbg(chan_dev, "free_irq: 0x%x\n", swdma_chan->irq);
