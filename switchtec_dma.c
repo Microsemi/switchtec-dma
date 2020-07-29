@@ -248,9 +248,10 @@ struct switchtec_dma_chan {
 	struct chan_fw_regs __iomem *mmio_chan_fw;
 
 	struct tasklet_struct desc_task;
-	spinlock_t ring_lock;
+	spinlock_t submit_lock;
 	bool ring_active;
 	int cid;
+	spinlock_t complete_lock;
 
 	/* channel index and irq */
 	int index;
@@ -574,7 +575,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	int i = 0;
 	int *p;
 
-	spin_lock_bh(&swdma_chan->ring_lock);
+	spin_lock_bh(&swdma_chan->complete_lock);
 
 	do {
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
@@ -654,7 +655,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			le16_to_cpu(desc->hw->cid));
 
 	} while (1);
-	spin_unlock_bh(&swdma_chan->ring_lock);
+	spin_unlock_bh(&swdma_chan->complete_lock);
 }
 
 static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
@@ -664,7 +665,7 @@ static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
 
 	switchtec_dma_process_desc(swdma_chan);
 
-	spin_lock_bh(&swdma_chan->ring_lock);
+	spin_lock_bh(&swdma_chan->complete_lock);
 
 	while (CIRC_CNT(swdma_chan->head, swdma_chan->tail,
 			SWITCHTEC_DMA_SQ_SIZE) >= 1) {
@@ -685,7 +686,7 @@ static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
 		swdma_chan->tail &= SWITCHTEC_DMA_SQ_SIZE - 1;
 	}
 
-	spin_unlock_bh(&swdma_chan->ring_lock);
+	spin_unlock_bh(&swdma_chan->complete_lock);
 }
 
 static void __switchtec_dma_chan_stop(struct switchtec_dma_chan *swdma_chan)
@@ -759,7 +760,7 @@ struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 		struct dma_chan *c, enum desc_type type, u16 dst_fid,
 		dma_addr_t dma_dst, u16 src_fid, dma_addr_t dma_src, u64 data,
 		size_t len, unsigned long flags)
-	__acquires(swdma_chan->ring_lock)
+	__acquires(swdma_chan->submit_lock)
 {
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(c);
 	struct device *chan_dev = to_chan_dev(swdma_chan);
@@ -789,7 +790,7 @@ struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 			SWITCHTEC_DMA_RING_SIZE))
 		return NULL;
 
-	spin_lock_bh(&swdma_chan->ring_lock);
+	spin_lock_bh(&swdma_chan->submit_lock);
 
 	desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->head);
 	swdma_chan->head++;
@@ -873,7 +874,7 @@ struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
 
 static dma_cookie_t switchtec_dma_tx_submit(
 		struct dma_async_tx_descriptor *desc)
-	__releases(swdma_chan->ring_lock)
+	__releases(swdma_chan->submit_lock)
 {
 	struct switchtec_dma_chan *swdma_chan =
 		to_switchtec_dma_chan(desc->chan);
@@ -883,7 +884,7 @@ static dma_cookie_t switchtec_dma_tx_submit(
 
 	dev_dbg(to_chan_dev(swdma_chan), "ooo_dbg: submit SE (cookie: %x)\n", cookie);
 
-	spin_unlock_bh(&swdma_chan->ring_lock);
+	spin_unlock_bh(&swdma_chan->submit_lock);
 
 	return cookie;
 }
@@ -929,9 +930,9 @@ static void switchtec_dma_issue_pending(struct dma_chan *chan)
 	 */
 	dev_dbg(to_chan_dev(swdma_chan), "HEAD 0x%x\n", swdma_chan->head);
 
-	spin_lock_bh(&swdma_chan->ring_lock);
+	spin_lock_bh(&swdma_chan->submit_lock);
 	writew(swdma_chan->head, &swdma_chan->mmio_chan_hw->sq_tail);
-	spin_unlock_bh(&swdma_chan->ring_lock);
+	spin_unlock_bh(&swdma_chan->submit_lock);
 	dev_dbg(to_chan_dev(swdma_chan),
 		"Update SE HEAD 0x%x to firmware.\n", swdma_chan->head);
 	rcu_read_unlock();
@@ -1104,9 +1105,9 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 
 	dev_dbg(to_chan_dev(swdma_chan), "\n");
 
-	spin_lock_bh(&swdma_chan->ring_lock);
+	spin_lock_bh(&swdma_chan->submit_lock);
 	swdma_chan->ring_active = false;
-	spin_unlock_bh(&swdma_chan->ring_lock);
+	spin_unlock_bh(&swdma_chan->submit_lock);
 
 	switchtec_dma_chan_stop(swdma_chan);
 
@@ -1212,7 +1213,8 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 
 	swdma_chan->irq = irq;
 
-	spin_lock_init(&swdma_chan->ring_lock);
+	spin_lock_init(&swdma_chan->submit_lock);
+	spin_lock_init(&swdma_chan->complete_lock);
 	tasklet_init(&swdma_chan->desc_task, switchtec_dma_desc_task,
 		     (unsigned long)swdma_chan);
 
@@ -1234,10 +1236,10 @@ static int switchtec_dma_chan_free(struct switchtec_dma_chan *swdma_chan)
 {
 	struct device *chan_dev = to_chan_dev(swdma_chan);
 	struct device *dev = &swdma_chan->swdma_dev->pdev->dev;
-	spin_lock_bh(&swdma_chan->ring_lock);
+	spin_lock_bh(&swdma_chan->submit_lock);
 	swdma_chan->ring_active = false;
 	swdma_chan->initialized = false;
-	spin_unlock_bh(&swdma_chan->ring_lock);
+	spin_unlock_bh(&swdma_chan->submit_lock);
 
 	dev_dbg(chan_dev, "free_irq: 0x%x\n", swdma_chan->irq);
 	devm_free_irq(dev, swdma_chan->irq, swdma_chan);
