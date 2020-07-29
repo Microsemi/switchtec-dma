@@ -575,12 +575,14 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	int i = 0;
 	int *p;
 
-	spin_lock_bh(&swdma_chan->complete_lock);
-
 	do {
+		spin_lock_bh(&swdma_chan->complete_lock);
+
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
-		if (ce->phase_tag == swdma_chan->phase_tag)
+		if (ce->phase_tag == swdma_chan->phase_tag) {
+			spin_unlock_bh(&swdma_chan->complete_lock);
 			break;
+		}
 
 		cid = le16_to_cpu(ce->cid);
 		se_idx = cid & (SWITCHTEC_DMA_SQ_SIZE - 1);
@@ -631,6 +633,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			dev_dbg(to_chan_dev(swdma_chan),
 				"ooo_dbg: out of order CE! current CE (cid: %x), current SE (cid: %x)",
 				cid, le16_to_cpu(cur_desc->hw->cid));
+			spin_unlock_bh(&swdma_chan->complete_lock);
 			continue;
 		}
 
@@ -654,8 +657,8 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 		dev_dbg(to_chan_dev(swdma_chan), "ooo_dbg: next SE (cid: %x)",
 			le16_to_cpu(desc->hw->cid));
 
+		spin_unlock_bh(&swdma_chan->complete_lock);
 	} while (1);
-	spin_unlock_bh(&swdma_chan->complete_lock);
 }
 
 static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
