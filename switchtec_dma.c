@@ -562,6 +562,13 @@ static struct switchtec_dma_hw_ce * switchtec_dma_get_ce(
 	return &swdma_chan->hw_cq[i];
 }
 
+#define CAL_CE_PROCESS  1
+
+#if CAL_CE_PROCESS
+static ktime_t totalCEtime = 0;
+static int totalCEs = 0;
+#endif
+
 static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 {
 	struct device *chan_dev = to_chan_dev(swdma_chan);
@@ -572,15 +579,29 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	int se_idx;
 	int i = 0;
 	int *p;
+#if CAL_CE_PROCESS
+        int noCE = 0;
+        static ktime_t start, diff = 0;
+        s64 ut;
 
+        dev_err(chan_dev,"switchtec_dma_process_desc started on CPU#%d\n", smp_processor_id());
+        start = ktime_get();
+        noCE = 0;
+#endif
+
+	spin_lock_bh(&swdma_chan->complete_lock);
 	do {
-		spin_lock_bh(&swdma_chan->complete_lock);
+//		spin_lock_bh(&swdma_chan->complete_lock);
 
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
 		if (ce->phase_tag == swdma_chan->phase_tag) {
-			spin_unlock_bh(&swdma_chan->complete_lock);
+//			spin_unlock_bh(&swdma_chan->complete_lock);
 			break;
 		}
+#if CAL_CE_PROCESS
+                noCE++;
+
+#endif
 
 		cid = le16_to_cpu(ce->cid);
 		se_idx = cid & (SWITCHTEC_DMA_SQ_SIZE - 1);
@@ -631,7 +652,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			dev_dbg(to_chan_dev(swdma_chan),
 				"ooo_dbg: out of order CE! current CE (cid: %x), current SE (cid: %x)",
 				cid, le16_to_cpu(cur_desc->hw->cid));
-			spin_unlock_bh(&swdma_chan->complete_lock);
+//			spin_unlock_bh(&swdma_chan->complete_lock);
 			continue;
 		}
 
@@ -655,8 +676,20 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 		dev_dbg(to_chan_dev(swdma_chan), "ooo_dbg: next SE (cid: %x)",
 			le16_to_cpu(desc->hw->cid));
 
-		spin_unlock_bh(&swdma_chan->complete_lock);
+//		spin_unlock_bh(&swdma_chan->complete_lock);
 	} while (1);
+
+	spin_unlock_bh(&swdma_chan->complete_lock);
+#if CAL_CE_PROCESS
+        diff = ktime_sub(ktime_get(), start);
+        ut = ktime_to_us(diff);
+        totalCEtime = ktime_add(totalCEtime, diff);
+        totalCEs += noCE;
+        dev_err(chan_dev,"%d CE processed on CPU#%d, takes %llu usecs\n", noCE, smp_processor_id(), ut);
+        ut = ktime_to_us(totalCEtime);
+        dev_err(chan_dev,"Total %d CE processed on CPU#%d so far, takes %llu usecs\n", totalCEs, smp_processor_id(), ut);
+#endif
+	
 }
 
 static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
