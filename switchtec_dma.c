@@ -562,10 +562,14 @@ static struct switchtec_dma_hw_ce * switchtec_dma_get_ce(
 	return &swdma_chan->hw_cq[i];
 }
 
-#define CAL_CE_PROCESS  1
+#define CAL_CE_PROCESS  0
+#define KTIME 0
+#define TSC 0
 
 #if CAL_CE_PROCESS
+#if KTIME
 static ktime_t totalCEtime = 0;
+#endif
 static int totalCEs = 0;
 #endif
 
@@ -581,23 +585,40 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	int *p;
 #if CAL_CE_PROCESS
         int noCE = 0;
-        static ktime_t start, diff = 0;
-        s64 ut;
+#if KTIME
+        static ktime_t kt_start, kt_diff = 0;
+	s64 ut;
+#endif
+#if TSC
+	u64 tsc_start, tsc_diff, tsc_starti, tsc_diffi, totaltsci = 0;;
+#endif
 
         dev_err(chan_dev,"switchtec_dma_process_desc started on CPU#%d\n", smp_processor_id());
-        start = ktime_get();
+
+#if KTIME
+        kt_start = ktime_get();
+#endif
+#if TSC
+	tsc_start = rdtsc();
+#endif
+
         noCE = 0;
 #endif
 
-	spin_lock_bh(&swdma_chan->complete_lock);
 	do {
-//		spin_lock_bh(&swdma_chan->complete_lock);
+		spin_lock_bh(&swdma_chan->complete_lock);
+#if TSC
+//                tsc_starti = rdtsc();
+#endif
 
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
 		if (ce->phase_tag == swdma_chan->phase_tag) {
-//			spin_unlock_bh(&swdma_chan->complete_lock);
+			spin_unlock_bh(&swdma_chan->complete_lock);
 			break;
 		}
+#if TSC
+//                tsc_starti = rdtsc();
+#endif
 #if CAL_CE_PROCESS
                 noCE++;
 
@@ -613,6 +634,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			cid, desc->txd.cookie);
 
 		res.residue = desc->orig_size - ce->cpl_byte_cnt;
+
 		p = (int *)ce;
 		for (i = 0; i < sizeof(*ce)/4; i++) {
 			dev_dbg(chan_dev, "CE DW%d: 0x%08x\n", i,
@@ -638,12 +660,19 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 				(u32)(ce->sts_code & SWITCHTEC_CE_SC_MASK));
 			res.result = DMA_TRANS_WRITE_FAILED;
 		}
-
 		desc->completed = true;
-
+#if TSC
+//                tsc_starti = rdtsc();
+#endif
 		swdma_chan->cq_tail++;
 		swdma_chan->cq_tail &= SWITCHTEC_DMA_CQ_SIZE - 1;
+
 		writew(swdma_chan->cq_tail, &swdma_chan->mmio_chan_hw->cq_head);
+#if TSC
+//                tsc_diffi = rdtsc() - tsc_starti;
+//                totaltsci += tsc_diffi;
+#endif
+
 
 		if (swdma_chan->cq_tail == 0)
 			swdma_chan->phase_tag = !swdma_chan->phase_tag;
@@ -652,14 +681,37 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			dev_dbg(to_chan_dev(swdma_chan),
 				"ooo_dbg: out of order CE! current CE (cid: %x), current SE (cid: %x)",
 				cid, le16_to_cpu(cur_desc->hw->cid));
-//			spin_unlock_bh(&swdma_chan->complete_lock);
+			spin_unlock_bh(&swdma_chan->complete_lock);
 			continue;
 		}
+#if TSC
+//                tsc_starti = rdtsc();
+#endif
 
 		do {
+#if TSC
+//                tsc_starti = rdtsc();
+#endif
 			dma_cookie_complete(&desc->txd);
+#if TSC
+                tsc_starti = rdtsc();
+#endif
+
 			dma_descriptor_unmap(&desc->txd);
+#if TSC
+//                tsc_starti = rdtsc();
+#endif
+
 			dmaengine_desc_get_callback_invoke(&desc->txd, &res);
+#if TSC
+//                tsc_starti = rdtsc();
+#endif
+#if TSC
+                tsc_diffi = rdtsc() - tsc_starti;
+                totaltsci += tsc_diffi;
+#endif
+
+
 			desc->txd.callback = NULL;
 			desc->txd.callback_result = NULL;
 			desc->completed = false;
@@ -668,28 +720,61 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			swdma_chan->tail &= SWITCHTEC_DMA_SQ_SIZE - 1;
 			desc = switchtec_dma_get_desc(swdma_chan,
 						      swdma_chan->tail);
+
 			if (!desc->completed)
 				break;
+
+
+			i = CIRC_CNT(swdma_chan->head, swdma_chan->tail,
+                                  SWITCHTEC_DMA_SQ_SIZE);
+#if TSC
+//                tsc_diffi = rdtsc() - tsc_starti;
+//                totaltsci += tsc_diffi;
+#endif
+#if 0
+		} while(1);
+#else
 		} while (CIRC_CNT(swdma_chan->head, swdma_chan->tail,
 				  SWITCHTEC_DMA_SQ_SIZE));
+#endif
+#if TSC
+//                tsc_diffi = rdtsc() - tsc_starti;
+//                totaltsci += tsc_diffi;
+#endif
 
 		dev_dbg(to_chan_dev(swdma_chan), "ooo_dbg: next SE (cid: %x)",
 			le16_to_cpu(desc->hw->cid));
 
-//		spin_unlock_bh(&swdma_chan->complete_lock);
+		spin_unlock_bh(&swdma_chan->complete_lock);
+
+#if 0
+                tsc_diffi = rdtsc() - tsc_starti;
+                totaltsci += tsc_diffi;
+#endif
 	} while (1);
 
-	spin_unlock_bh(&swdma_chan->complete_lock);
 #if CAL_CE_PROCESS
-        diff = ktime_sub(ktime_get(), start);
-        ut = ktime_to_us(diff);
-        totalCEtime = ktime_add(totalCEtime, diff);
-        totalCEs += noCE;
-        dev_err(chan_dev,"%d CE processed on CPU#%d, takes %llu usecs\n", noCE, smp_processor_id(), ut);
-        ut = ktime_to_us(totalCEtime);
-        dev_err(chan_dev,"Total %d CE processed on CPU#%d so far, takes %llu usecs\n", totalCEs, smp_processor_id(), ut);
+	totalCEs += noCE;
+	if (noCE) {
+#if KTIME
+	        kt_diff = ktime_sub(ktime_get(), kt_start);
+        	ut = ktime_to_us(kt_diff);
+	        totalCEtime = ktime_add(totalCEtime, kt_diff);
+
+        	dev_err(chan_dev,"%d CE processed on CPU#%d, takes %llu usecs\n", noCE, smp_processor_id(), ut);
+	        ut = ktime_to_us(totalCEtime);
+        	dev_err(chan_dev,"Total %d CE processed on CPU#%d so far, takes %llu usecs\n", totalCEs, smp_processor_id(), ut);
 #endif
-	
+
+#if TSC
+        	tsc_diff = rdtsc() - tsc_start;
+        	dev_err(chan_dev,"%d CE processed on CPU#%d, takes %lld cycles, avg=%lld. profiled insts takes %lld cycles avg=%lld. avg overhead %d\n",
+				noCE, smp_processor_id(), tsc_diff, tsc_diff/noCE, totaltsci, totaltsci/noCE, (int)((tsc_diff-totaltsci)/noCE));
+#endif
+	}
+
+#endif
+
 }
 
 static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
