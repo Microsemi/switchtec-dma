@@ -1008,6 +1008,9 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 		goto free_and_exit;
 	memset(swdma_chan->hw_cq, 0, size);
 
+	/* reset host phase tag */
+	swdma_chan->phase_tag = 0;
+
 	size = sizeof(*swdma_chan->desc_ring);
 	swdma_chan->desc_ring = kcalloc(SWITCHTEC_DMA_RING_SIZE,
 					size, GFP_KERNEL);
