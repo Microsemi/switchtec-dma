@@ -72,14 +72,15 @@ static struct notifier_block rhi_nb = {
 	.notifier_call = rhi_notify,
 };
 
+int *spd_buf;
+int *data_buf;
+size_t spd_buf_size;
+dma_addr_t spd_buf_dma_addr;
+dma_addr_t data_buf_dma_addr;
 static int __init dma_client_init(void)
 {
 	int ret;
-	int *spd_buf;
-	int *data_buf;
 	bool rhi_notify = false;
-	size_t spd_buf_size;
-	dma_addr_t buf_dma_addr;
 	int buf_num;
 	int i;
 	struct switchtec_buffer local_bufs[2];
@@ -119,8 +120,8 @@ static int __init dma_client_init(void)
 	 * Allocate spd DMA buffer
 	 */
 	spd_buf_size = PAGE_SIZE;
-	spd_buf = dmam_alloc_coherent(dma_dev->dev, spd_buf_size,
-				      &buf_dma_addr, GFP_KERNEL);
+	spd_buf = dma_alloc_coherent(dma_dev->dev, spd_buf_size,
+				     &spd_buf_dma_addr, GFP_KERNEL);
 	if (!spd_buf) {
 		printk("Failed to allocate spd DMA buffer.\n");
 		ret = -ENOMEM;
@@ -131,12 +132,13 @@ static int __init dma_client_init(void)
 	/*
 	 * Register spd DMA buffer to buffer slot 0 @ peer host
 	 */
-	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid, 0,
-					       buf_dma_addr, spd_buf_size,
+	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid,
+					       SCRATCHPAD_BUFFER_INDEX,
+					       spd_buf_dma_addr, spd_buf_size,
 					       &spd_cookie);
 	if (ret < 0) {
-		printk("Failed to register spd DMA buffer to slot 0 @ peer 0x04%x.\n",
-		       peer_hfid);
+		printk("Failed to register spd DMA buffer to slot %d @ peer 0x04%x.\n",
+		       SCRATCHPAD_BUFFER_INDEX, peer_hfid);
 		ret = -ENXIO;
 		goto err_free_resource;
 	}
@@ -144,7 +146,8 @@ static int __init dma_client_init(void)
 	/*
 	 * Allocate data DMA buffer
 	 */
-	data_buf = dma_alloc_coherent(dma_dev->dev, data_buf_size, &buf_dma_addr,
+	data_buf = dma_alloc_coherent(dma_dev->dev, data_buf_size,
+				      &data_buf_dma_addr,
 				      GFP_KERNEL);
 	if (!data_buf) {
 		printk("Failed to allocate data DMA buffer.\n");
@@ -156,12 +159,12 @@ static int __init dma_client_init(void)
 	/*
 	 * Register data DMA buffer to buffer slot 1 @ peer host
 	 */
-	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid,
-					       1, buf_dma_addr,
-					       data_buf_size, &data_cookie);
+	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid, DATA_BUFFER_INDEX,
+					       data_buf_dma_addr, data_buf_size,
+					       &data_cookie);
 	if (ret < 0) {
-		printk("Failed to register data DMA buffer to slot 1 @ peer 0x04%x.\n",
-		       peer_hfid);
+		printk("Failed to register data DMA buffer to slot %d @ peer 0x04%x.\n",
+		       DATA_BUFFER_INDEX, peer_hfid);
 		ret = -ENXIO;
 		goto err_free_resource;
 	}
@@ -237,6 +240,12 @@ static void __exit dma_client_exit(void)
 		printk("Failed to unregister RHI notify.\n");
 
         switchtec_fabric_put_dma_device(dma_dev);
+
+	dma_free_coherent(dma_dev->dev, spd_buf_size, spd_buf,
+			  spd_buf_dma_addr);
+
+	dma_free_coherent(dma_dev->dev, data_buf_size, data_buf,
+			  data_buf_dma_addr);
 }
 
 module_exit(dma_client_exit);
