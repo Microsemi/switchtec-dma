@@ -184,7 +184,6 @@ enum {
 #define SWITCHTEC_LAT_SE_FETCH   BIT(0)
 #define SWITCHTEC_LAT_VDM        BIT(1)
 #define SWITCHTEC_LAT_RD_IMM     BIT(2)
-#define SWITCHTEC_LAT_FW_NP      BIT(3)
 #define SWITCHTEC_LAT_SE_PROCESS BIT(4)
 
 struct chan_fw_regs {
@@ -1774,7 +1773,7 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 
 	lat = le32_to_cpu(readl(&chan_fw->perf_latency_selector));
 
-	strcat(page, "To select a latency type, write the type number (1 ~ 5) to this file.\n\n");
+	strcat(page, "To select a latency type, write the type number (1 ~ 4) to this file.\n\n");
 
         strcat(page, "Latency Types (Selected latency type is shown with trailing (*))\n");
 	strcat(page, "(1) SE Fetch latency");
@@ -1795,13 +1794,7 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 	else
 		strcat(page, "\n");
 
-	strcat(page, "(4) FW NP latency");
-	if (lat & SWITCHTEC_LAT_FW_NP)
-		strcat(page, " (*)\n");
-	else
-		strcat(page, "\n");
-
-	strcat(page, "(5) SE Processing latency");
+	strcat(page, "(4) SE Processing latency");
 	if (lat & SWITCHTEC_LAT_SE_PROCESS)
 		strcat(page, " (*)\n");
 	else
@@ -1833,12 +1826,23 @@ static ssize_t latency_selector_store(struct dma_chan *chan, const char *page,
 	}
 
 	if (kstrtoint(page, 0, &lat_type) == 0) {
-		if (lat_type < 1 ||
-		    lat_type > 5) {
+		switch (lat_type) {
+		case 1:
+			lat_type = SWITCHTEC_LAT_SE_FETCH;
+			break;
+		case 2:
+			lat_type = SWITCHTEC_LAT_VDM;
+			break;
+		case 3:
+			lat_type = SWITCHTEC_LAT_RD_IMM;
+			break;
+		case 4:
+			lat_type = SWITCHTEC_LAT_SE_PROCESS;
+			break;
+		default:
 			ret = -EINVAL;
 			goto err_unlock;
-		}
-		lat_type = 1 << (lat_type - 1);
+		};
 		writel(lat_type, &chan_fw->perf_latency_selector);
 	}
 
