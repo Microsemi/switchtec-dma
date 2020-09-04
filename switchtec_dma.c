@@ -1805,7 +1805,7 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 	if (lat & SWITCHTEC_LAT_SE_PROCESS)
 		strcat(page, " (*)\n");
 	else
-		 strcat(page, "\n");
+		strcat(page, "\n");
 
 	strcat(page, "\n");
 
