@@ -16,9 +16,9 @@ hardware registers for the driver to configure and control the DMA engine.
 
 The switchtec dma driver maintains two queues in host memory space, a submission
 queue (SQ) and a completion queue (CQ), to communicate with the hardware DMA
-engine. The Switchtec DMA driver adds Submission Elements to the SQ on behalf of
-the DMA client when a DMA transfer is kicked off. The DMA engine adds Completion
-Elements to the CQ when a DMA transfer has finished.
+engine. The Switchtec DMA driver adds Submission Elements (SE) to the SQ on
+behalf of the DMA client when a DMA transfer is kicked off. The DMA engine adds
+Completion Elements (CE) to the CQ when a DMA transfer has finished.
 
 ## DMA mode
 
@@ -33,8 +33,8 @@ both PSX/PFX and PAX devices are present in the system.
 In basic mode, Switchtec DMA enables data movement within a local host.
 
 This mode is automatically turned on with Switchtec PSX/PFX DMA endpoint
-devices when they're probed. With this mode on, the Switchtec DMA driver enables
-the following DMA transactions:
+devices when they're probed and initialized by the driver. In this mode, the
+Switchtec DMA driver enables the following DMA transactions:
 
 - Memory copy within the local host
 - Write Immediate within the local host
@@ -48,17 +48,17 @@ Documentation/driver-api/dmaengine/provider.rst in the Linux kernel source tree.
 ## Fabric mode
 
 In fabric mode, the Switchtec DMA driver enables data movement from one host to
-another within a Switchtec fabric.
+another within the same Switchtec fabric.
 
 This mode is automatically turned on with Switchtec PAX DMA endpoint devices
-when they're probed. With this mode on, the Switchtec DMA driver enables the
-following DMA transactions:
+when they're probed and initialized by the driver. In this mode, the Switchtec
+DMA driver enables the following DMA transactions:
 
 - Memory copy from the local host to a remote host
 - Write Immediate to a remote host
-- Remote Host Interrupt to a remote host
+- Interrupt a remote host (Remote Host Interrupt or RHI)
 
-### DMA client interface
+### Fabric DMA client interface
 
 In fabric mode, the Switchtec DMA driver extends the provider interface of the
 Linux DMAEngine framework, which means all of the current provider interfaces
