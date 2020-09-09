@@ -28,7 +28,7 @@ Switchtec PAX devices, the Switchtec DMA driver works in fabric mode. The
 Switchtec DMA driver can work in basic mode and fabric mode at the same time if
 both PSX/PFX and PAX devices are present in the system.
 
-## Basic mode
+### Basic mode
 
 In basic mode, Switchtec DMA enables data movement within a local host.
 
@@ -39,13 +39,13 @@ Switchtec DMA driver enables the following DMA transactions:
 - Memory copy within the local host
 - Write Immediate within the local host
 
-### DMA client interface
+#### DMA client interface
 
 In basic mode, the Switchtec DMA driver works as a DMA controller driver
 (provider) of the Linux DMAEngine framework. For more detail, refer to
 Documentation/driver-api/dmaengine/provider.rst in the Linux kernel source tree.
 
-## Fabric mode
+### Fabric mode
 
 In fabric mode, the Switchtec DMA driver enables data movement from one host to
 another within the same Switchtec fabric.
@@ -58,7 +58,7 @@ DMA driver enables the following DMA transactions:
 - Write Immediate to a remote host
 - Interrupt a remote host (Remote Host Interrupt or RHI)
 
-### Fabric DMA client interface
+#### Fabric DMA client interface
 
 In fabric mode, the Switchtec DMA driver extends the provider interface of the
 Linux DMAEngine framework, which means all of the current provider interfaces
