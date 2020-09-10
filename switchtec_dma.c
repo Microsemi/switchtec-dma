@@ -45,11 +45,11 @@ struct dmac_version_regs {
 struct dmac_capability_regs {
 	u32 cap;
 	u32 chan_cnt;
-	u32 rsvd;
+	u32 rsvd1;
 	u32 cplt_tmo;
 	u32 tag_limit;
 	u16 chan_sts_vec;
-	u16 int_err_vec;
+	u16 rsvd2;
 	u16 se_buf_cnt;
 	u16 se_buf_base;
 } __packed;
