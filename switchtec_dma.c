@@ -766,31 +766,31 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 	struct device *chan_dev = to_chan_dev(swdma_chan);
 	struct switchtec_dma_desc *desc;
 
+	spin_lock_bh(&swdma_chan->submit_lock);
+
 	dev_dbg(chan_dev, "\n");
 
 	if (type >= UNKNOWN_TRANSACTION)
-		return NULL;
+		goto err_unlock;
 
 	if (type == MEMCPY)
 		if (len > SWITCHTEC_DESC_MAX_SIZE)
-			return NULL;
+			goto err_unlock;
 
 	if ((type == WIMM) && (len == 8))
 		if (dma_dst & ((1 << DMAENGINE_ALIGN_8_BYTES) - 1)) {
 			dev_err(chan_dev,
 				"QW WIMM dst addr 0x%08x_%08x not QW aligned!\n",
 				upper_32_bits(dma_dst), lower_32_bits(dma_dst));
-			return NULL;
+			goto err_unlock;
 		}
 
 	if (!swdma_chan->ring_active)
-		return NULL;
+		goto err_unlock;
 
 	if (!CIRC_SPACE(swdma_chan->head, swdma_chan->tail,
 			SWITCHTEC_DMA_RING_SIZE))
-		return NULL;
-
-	spin_lock_bh(&swdma_chan->submit_lock);
+		goto err_unlock;
 
 	desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->head);
 	swdma_chan->head++;
@@ -851,11 +851,22 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 	/* return with the lock held, it will be released in tx_submit */
 
 	return &desc->txd;
+
+err_unlock:
+	/*
+	 * Keep sparse happy by restoring an even lock count on
+	 * this lock.
+	 */
+	__acquire(swdma_chan->submit_lock);
+
+	spin_unlock_bh(&swdma_chan->submit_lock);
+	return NULL;
 }
 
 static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 		struct dma_chan *c, dma_addr_t dma_dst, dma_addr_t dma_src,
 		size_t len, unsigned long flags)
+	__acquires(swdma_chan->submit_lock)
 {
 
 	return switchtec_dma_prep_desc(c, MEMCPY, SWITCHTEC_INVALID_HFID,
@@ -866,6 +877,7 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 static struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
 		struct dma_chan *c, dma_addr_t dst, u64 data,
 		unsigned long flags)
+	__acquires(swdma_chan->submit_lock)
 {
 	return switchtec_dma_prep_desc(c, WIMM, SWITCHTEC_INVALID_HFID, dst,
 				       SWITCHTEC_INVALID_HFID, 0, data,
@@ -2541,6 +2553,7 @@ struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_memcpy(
 		struct dma_chan *c, u16 dst_dfid, dma_addr_t dma_dst,
 		u16 src_dfid, dma_addr_t dma_src, size_t len,
 		unsigned long flags)
+	__acquires(swdma_chan->submit_lock)
 {
 	return switchtec_dma_prep_desc(c, MEMCPY, dst_dfid, dma_dst, src_dfid,
 				       dma_src, 0, len, flags);
@@ -2552,6 +2565,7 @@ EXPORT_SYMBOL(switchtec_fabric_dma_prep_memcpy);
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_rhi(
 		struct dma_chan *c, u16 peer_dfid, u16 rhi_index,
 		u16 local_dfid, unsigned long flags)
+	__acquires(swdma_chan->submit_lock)
 {
 	dma_addr_t dst_addr = RHI_BASE_ADDR + rhi_index * 4;
 	u32 data = RHI_DATA;
@@ -2565,6 +2579,7 @@ EXPORT_SYMBOL(switchtec_fabric_dma_prep_rhi);
 struct dma_async_tx_descriptor *switchtec_fabric_dma_prep_wimm_data(
 		struct dma_chan *c, u16 peer_dfid, dma_addr_t dma_dst,
 		u16 local_dfid, u64 data, unsigned long flags)
+	__acquires(swdma_chan->submit_lock)
 {
 	return switchtec_dma_prep_desc(c, WIMM, peer_dfid, dma_dst, local_dfid,
 				       0, data, sizeof(data), flags);
