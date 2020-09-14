@@ -576,7 +576,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 		spin_lock_bh(&swdma_chan->complete_lock);
 
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
-		if (ce->phase_tag == swdma_chan->phase_tag) {
+		if (le16_to_cpu(ce->phase_tag) == swdma_chan->phase_tag) {
 			spin_unlock_bh(&swdma_chan->complete_lock);
 			break;
 		}
@@ -590,30 +590,30 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			"ooo_dbg: current CE (cid: %x, cookie: %x)",
 			cid, desc->txd.cookie);
 
-		res.residue = desc->orig_size - ce->cpl_byte_cnt;
+		res.residue = desc->orig_size - le32_to_cpu(ce->cpl_byte_cnt);
 		p = (int *)ce;
 		for (i = 0; i < sizeof(*ce)/4; i++) {
 			dev_dbg(chan_dev, "CE DW%d: 0x%08x\n", i,
-				le32_to_cpu(*p));
+				le32_to_cpu((__force __le32)*p));
 			p++;
 		}
 
-		if (!(ce->sts_code & SWITCHTEC_CE_SC_MASK)) {
+		if (!(le32_to_cpu(ce->sts_code) & SWITCHTEC_CE_SC_MASK)) {
 			dev_dbg(chan_dev,"CID 0x%04x Success\n", cid);
 			dev_dbg(chan_dev, "Requested byte count: 0x%08x\n",
 				desc->orig_size);
 			dev_dbg(chan_dev, "Completed byte count: 0x%08x\n",
-				ce->cpl_byte_cnt);
+				le32_to_cpu(ce->cpl_byte_cnt));
 			res.result = DMA_TRANS_NOERROR;
-		} else if (ce->sts_code & SWITCHTEC_CE_SC_D_RD_CTO) {
+		} else if (le32_to_cpu(ce->sts_code) & SWITCHTEC_CE_SC_D_RD_CTO) {
 			dev_err(chan_dev,
 				"CID 0x%04x Read failed, SC 0x%08x\n", cid,
-				(u32)(ce->sts_code & SWITCHTEC_CE_SC_MASK));
+				(u32)(le32_to_cpu(ce->sts_code) & SWITCHTEC_CE_SC_MASK));
 			res.result = DMA_TRANS_READ_FAILED;
 		} else {
 			dev_err(chan_dev,
 				"CID 0x%04x Write failed, SC 0x%08x\n", cid,
-				(u32)(ce->sts_code & SWITCHTEC_CE_SC_MASK));
+				(u32)(le32_to_cpu(ce->sts_code) & SWITCHTEC_CE_SC_MASK));
 			res.result = DMA_TRANS_WRITE_FAILED;
 		}
 
