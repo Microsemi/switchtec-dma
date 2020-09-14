@@ -107,7 +107,7 @@ struct dmac_fabric_control_regs {
 #define SWITCHTEC_CHAN_STS_HALTED      BIT(10)
 #define SWITCHTEC_CHAN_STS_PAUSED_MASK GENMASK(29, 13)
 
-const char *channel_status_str[] = {
+static const char *channel_status_str[] = {
 	[13] = "received a VDM with length error status",
 	[14] = "received a VDM or Cpl with Unsupported Request error status",
 	[15] = "received a VDM or Cpl with Completion Abort error status",
@@ -756,7 +756,7 @@ enum desc_type{
 	UNKNOWN_TRANSACTION,
 };
 
-struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
+static struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 		struct dma_chan *c, enum desc_type type, u16 dst_fid,
 		dma_addr_t dma_dst, u16 src_fid, dma_addr_t dma_src, u64 data,
 		size_t len, unsigned long flags)
@@ -863,7 +863,7 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_memcpy(
 				       0, len, flags);
 }
 
-struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
+static struct dma_async_tx_descriptor *switchtec_dma_prep_wimm_data(
 		struct dma_chan *c, dma_addr_t dst, u64 data,
 		unsigned long flags)
 {
@@ -1132,7 +1132,7 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 #define SWITCHTEC_DMA_CHAN_HW_REGS_SIZE 0x1000
 #define SWITCHTEC_DMA_CHAN_FW_REGS_SIZE 0x80
 
-struct kobj_type switchtec_config_ktype;
+static struct kobj_type switchtec_config_ktype;
 
 static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 {
@@ -1370,7 +1370,7 @@ err_unlock:
 
 	return ret;
 }
-struct switchtec_sysfs_entry burst_scale_attr = __ATTR_RW(burst_scale);
+static struct switchtec_sysfs_entry burst_scale_attr = __ATTR_RW(burst_scale);
 
 static ssize_t burst_size_show(struct dma_chan *chan, char *page)
 {
@@ -1431,7 +1431,7 @@ err_unlock:
 }
 
 
-struct switchtec_sysfs_entry burst_size_attr = __ATTR_RW(burst_size);
+static struct switchtec_sysfs_entry burst_size_attr = __ATTR_RW(burst_size);
 
 static ssize_t arb_weight_show(struct dma_chan *chan, char *page)
 {
@@ -1489,7 +1489,7 @@ err_unlock:
 
 	return ret;
 }
-struct switchtec_sysfs_entry arb_weight_attr = __ATTR_RW(arb_weight);
+static struct switchtec_sysfs_entry arb_weight_attr = __ATTR_RW(arb_weight);
 
 static ssize_t interval_show(struct dma_chan *chan, char *page)
 {
@@ -1549,7 +1549,7 @@ err_unlock:
 	return ret;
 }
 
-struct switchtec_sysfs_entry interval_attr = __ATTR_RW(interval);
+static struct switchtec_sysfs_entry interval_attr = __ATTR_RW(interval);
 
 static ssize_t mrrs_show(struct dma_chan *chan, char *page)
 {
@@ -1607,7 +1607,7 @@ err_unlock:
 	return ret;
 }
 
-struct switchtec_sysfs_entry mrrs_attr = __ATTR_RW(mrrs);
+static struct switchtec_sysfs_entry mrrs_attr = __ATTR_RW(mrrs);
 
 static ssize_t se_count_show(struct dma_chan *chan, char *page)
 {
@@ -1629,7 +1629,7 @@ static ssize_t se_count_show(struct dma_chan *chan, char *page)
 	return sprintf(page, "0x%llx\n", count);
 }
 
-struct switchtec_sysfs_entry se_count_attr = __ATTR_RO(se_count);
+static struct switchtec_sysfs_entry se_count_attr = __ATTR_RO(se_count);
 
 static ssize_t byte_count_show(struct dma_chan *chan, char *page)
 {
@@ -1644,7 +1644,7 @@ static ssize_t byte_count_show(struct dma_chan *chan, char *page)
 	return sprintf(page, "0x%llx\n", count);
 }
 
-struct switchtec_sysfs_entry byte_count_attr = __ATTR_RO(byte_count);
+static struct switchtec_sysfs_entry byte_count_attr = __ATTR_RO(byte_count);
 
 static ssize_t se_pending_show(struct dma_chan *chan, char *page)
 {
@@ -1664,7 +1664,7 @@ static ssize_t se_pending_show(struct dma_chan *chan, char *page)
 	return sprintf(page, "0x%x\n", count);
 }
 
-struct switchtec_sysfs_entry se_pending_attr = __ATTR_RO(se_pending);
+static struct switchtec_sysfs_entry se_pending_attr = __ATTR_RO(se_pending);
 
 static ssize_t se_buf_empty_show(struct dma_chan *chan, char *page)
 {
@@ -1684,7 +1684,7 @@ static ssize_t se_buf_empty_show(struct dma_chan *chan, char *page)
 	return sprintf(page, "0x%x\n", count);
 }
 
-struct switchtec_sysfs_entry se_buf_empty_attr = __ATTR_RO(se_buf_empty);
+static struct switchtec_sysfs_entry se_buf_empty_attr = __ATTR_RO(se_buf_empty);
 
 static ssize_t chan_idle_show(struct dma_chan *chan, char *page)
 {
@@ -1704,7 +1704,7 @@ static ssize_t chan_idle_show(struct dma_chan *chan, char *page)
 	return sprintf(page, "0x%x\n", ratio);
 }
 
-struct switchtec_sysfs_entry chan_idle_attr = __ATTR_RO(chan_idle);
+static struct switchtec_sysfs_entry chan_idle_attr = __ATTR_RO(chan_idle);
 
 static ssize_t latency_max_show(struct dma_chan *chan, char *page)
 {
@@ -1717,7 +1717,7 @@ static ssize_t latency_max_show(struct dma_chan *chan, char *page)
 	return sprintf(page, "0x%x\n", lat);
 }
 
-struct switchtec_sysfs_entry latency_max_attr = __ATTR_RO(latency_max);
+static struct switchtec_sysfs_entry latency_max_attr = __ATTR_RO(latency_max);
 
 static ssize_t latency_min_show(struct dma_chan *chan, char *page)
 {
@@ -1737,7 +1737,7 @@ static ssize_t latency_min_show(struct dma_chan *chan, char *page)
 	return sprintf(page, "0x%x\n", lat);
 }
 
-struct switchtec_sysfs_entry latency_min_attr = __ATTR_RO(latency_min);
+static struct switchtec_sysfs_entry latency_min_attr = __ATTR_RO(latency_min);
 
 static ssize_t latency_last_show(struct dma_chan *chan, char *page)
 {
@@ -1757,7 +1757,7 @@ static ssize_t latency_last_show(struct dma_chan *chan, char *page)
 	return sprintf(page, "0x%x\n", lat);
 }
 
-struct switchtec_sysfs_entry latency_last_attr = __ATTR_RO(latency_last);
+static struct switchtec_sysfs_entry latency_last_attr = __ATTR_RO(latency_last);
 
 static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 {
@@ -1852,7 +1852,8 @@ err_unlock:
 	return ret;
 }
 
-struct switchtec_sysfs_entry latency_selector_attr =__ATTR_RW(latency_selector);
+static struct switchtec_sysfs_entry latency_selector_attr =
+__ATTR_RW(latency_selector);
 
 static ssize_t switchtec_config_attr_show(struct kobject *kobj,
 					  struct attribute *attr, char *page)
@@ -1883,7 +1884,7 @@ static ssize_t switchtec_config_attr_store(struct kobject *kobj,
 	return entry->store(&swdma_chan->dma_chan, page, count);
 }
 
-const struct sysfs_ops switchtec_config_sysfs_ops = {
+static const struct sysfs_ops switchtec_config_sysfs_ops = {
 	.show	= switchtec_config_attr_show,
 	.store  = switchtec_config_attr_store,
 };
@@ -1897,7 +1898,7 @@ static struct attribute *switchtec_config_attrs[] = {
 	NULL,
 };
 
-struct kobj_type switchtec_config_ktype = {
+static struct kobj_type switchtec_config_ktype = {
 	.sysfs_ops = &switchtec_config_sysfs_ops,
 	.default_attrs = switchtec_config_attrs,
 };
@@ -1931,7 +1932,7 @@ static ssize_t switchtec_pmon_attr_store(struct kobject *kobj,
 	return entry->store(&swdma_chan->dma_chan, page, count);
 }
 
-const struct sysfs_ops switchtec_pmon_sysfs_ops = {
+static struct sysfs_ops switchtec_pmon_sysfs_ops = {
 	.show	= switchtec_pmon_attr_show,
 	.store  = switchtec_pmon_attr_store,
 };
@@ -1950,12 +1951,12 @@ static struct attribute *switchtec_pmon_attrs[] = {
 	NULL,
 };
 
-struct kobj_type switchtec_pmon_ktype = {
+static struct kobj_type switchtec_pmon_ktype = {
 	.sysfs_ops = &switchtec_pmon_sysfs_ops,
 	.default_attrs = switchtec_pmon_attrs,
 };
 
-void switchtec_chan_kobject_add(struct switchtec_dma_chan *swdma_chan)
+static void switchtec_chan_kobject_add(struct switchtec_dma_chan *swdma_chan)
 {
 	struct kobject *parent;
 	int err;
@@ -1978,7 +1979,7 @@ void switchtec_chan_kobject_add(struct switchtec_dma_chan *swdma_chan)
 	}
 }
 
-void switchtec_kobject_add(struct switchtec_dma_dev *swdma_dev)
+static void switchtec_kobject_add(struct switchtec_dma_dev *swdma_dev)
 {
 	struct dma_device *dma = &swdma_dev->dma_dev;
 	struct switchtec_dma_chan *swdma_chan;
@@ -2003,7 +2004,7 @@ void switchtec_chan_kobject_del(struct switchtec_dma_chan *swdma_chan)
 	}
 }
 
-bool is_fabric_dma(struct dma_device *dma)
+static bool is_fabric_dma(struct dma_device *dma)
 {
 	struct switchtec_dma_dev *d;
 
@@ -2015,9 +2016,9 @@ bool is_fabric_dma(struct dma_device *dma)
 	return false;
 }
 
-int execute_cmd(struct switchtec_dma_dev *swdma_dev, u32 cmd,
-		const void *input, size_t input_size, void *output,
-		size_t *output_size)
+static int execute_cmd(struct switchtec_dma_dev *swdma_dev, u32 cmd,
+		       const void *input, size_t input_size, void *output,
+		       size_t *output_size)
 {
 	unsigned long wait_timeout;
 	enum cmd_status status;
@@ -2595,7 +2596,7 @@ int switchtec_fabric_unregister_event_notify(struct dma_device *dma_dev,
 }
 EXPORT_SYMBOL_GPL(switchtec_fabric_unregister_event_notify);
 
-int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
+static int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 {
 	struct device *dev = &swdma_dev->pdev->dev;
 	int irq;
