@@ -2149,7 +2149,7 @@ int switchtec_fabric_get_host_ports(struct dma_device *dma_dev, u8 pax_id,
 		u8 host_port_num;
 		u32 rsvd;
 		struct {
-			u16 hfid;
+			__le16 hfid;
 			u8 phys_pid;
 			u8 link_state;
 		} host_ports[SWITCHTEC_HOST_PORT_NUM_PER_PAX];
@@ -2232,13 +2232,13 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 	int ret = 0;
 
 	struct {
-		u16 hfid;
+		__le16 hfid;
 		u8 buf_index;
 		u8 rsvd;
-		u32 addr_lo;
-		u32 addr_hi;
-		u32 size_lo;
-		u32 size_hi;
+		__le32 addr_lo;
+		__le32 addr_hi;
+		__le32 size_lo;
+		__le32 size_hi;
 	} req = {
 		.hfid = cpu_to_le16(peer_hfid),
 		.buf_index = buf_index,
@@ -2251,7 +2251,7 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 	struct {
 		u8 buf_index;
 		u8 rsvd;
-		u16 buf_vec;
+		__le16 buf_vec;
 	} rsp;
 
 	if (!dma_dev || !is_fabric_dma(dma_dev) || !cookie)
@@ -2292,7 +2292,7 @@ int switchtec_fabric_unregister_buffer(struct dma_device *dma_dev,
 	int ret;
 
 	struct {
-		u16 hfid;
+		__le16 hfid;
 		u8 buf_index;
 		u8 rsvd;
 	} req = {
@@ -2315,19 +2315,19 @@ int switchtec_fabric_unregister_buffer(struct dma_device *dma_dev,
 EXPORT_SYMBOL(switchtec_fabric_unregister_buffer);
 
 struct buffer_entry {
-	u16 hfid;
+	__le16 hfid;
 	u8 index;
 	u8 rsvd1;
-	u32 addr_lo;
-	u32 addr_hi;
-	u32 size_lo;
-	u32 size_hi;
-	u16 rhi_index;
+	__le32 addr_lo;
+	__le32 addr_hi;
+	__le32 size_lo;
+	__le32 size_hi;
+	__le16 rhi_index;
 	u16 rsvd2;
-	u16 local_dfid;
-	u16 remote_dfid;
-	u16 local_rhi_dfid;
-	u16 remote_rhi_dfid;
+	__le16 local_dfid;
+	__le16 remote_dfid;
+	__le16 local_rhi_dfid;
+	__le16 remote_rhi_dfid;
 };
 
 int switchtec_fabric_get_peer_buffers(struct dma_device *dma_dev, u16 peer_hfid,
