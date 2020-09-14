@@ -44,8 +44,8 @@ static unsigned int timeout = 5;
 module_param(timeout, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(timeout, "Time in seconds to wait for peer buffer registration (default: 5)");
 
-struct dma_device *dma_dev = NULL;
-struct dma_chan *dma_chan = NULL;
+static struct dma_device *dma_dev = NULL;
+static struct dma_chan *dma_chan = NULL;
 
 static bool dma_client_filter(struct dma_chan *chan, void *data)
 {
@@ -82,7 +82,7 @@ static void dma_copy_callback(void *data)
 	}
 }
 
-DECLARE_COMPLETION(event_comp);
+static DECLARE_COMPLETION(event_comp);
 static int event_notify(struct notifier_block *self,
 			unsigned long event_type,
 			void *event)
@@ -101,7 +101,7 @@ static struct notifier_block event_nb = {
 	.notifier_call = event_notify,
 };
 
-void print_buffer_info(const char *desc, struct switchtec_buffer *buf)
+static void print_buffer_info(const char *desc, struct switchtec_buffer *buf)
 {
 	printk("%s\n", desc);
 	printk("    peer buf slot:   %x\n", buf->index);
