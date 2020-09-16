@@ -22,15 +22,15 @@ Completion Elements (CE) to the CQ when a DMA transfer has finished.
 
 ## DMA mode
 
-The Switchtec DMA driver can work in two modes: basic mode and fabric mode. With
-Switchtec PSX/PFX devices, the Switchtec DMA driver works in basic mode. With
-Switchtec PAX devices, the Switchtec DMA driver works in fabric mode. The
-Switchtec DMA driver can work in basic mode and fabric mode at the same time if
-both PSX/PFX and PAX devices are present in the system.
+The Switchtec DMA driver can work in two modes: address DMA mode and fabric DMA
+mode. With Switchtec PSX/PFX devices, the Switchtec DMA driver works in address
+DMA mode. With Switchtec PAX devices, the Switchtec DMA driver works in fabric
+DMA mode. The Switchtec DMA driver can work in address DMA mode and fabric DMA
+mode at the same time if both PSX/PFX and PAX devices are present in the system.
 
-### Basic mode
+### Address DMA mode
 
-In basic mode, Switchtec DMA enables data movement within a local host.
+In address DMA mode, Switchtec DMA enables data movement within a local host.
 
 This mode is automatically turned on with Switchtec PSX/PFX DMA endpoint
 devices when they're probed and initialized by the driver. In this mode, the
@@ -41,13 +41,13 @@ Switchtec DMA driver enables the following DMA transactions:
 
 #### DMA client interface
 
-In basic mode, the Switchtec DMA driver works as a DMA controller driver
+In address DMA mode, the Switchtec DMA driver works as a DMA controller driver
 (provider) of the Linux DMAEngine framework. For more detail, refer to
 Documentation/driver-api/dmaengine/provider.rst in the Linux kernel source tree.
 
-### Fabric mode
+### Fabric DMA mode
 
-In fabric mode, the Switchtec DMA driver enables data movement from one host to
+In fabric DMA mode, the Switchtec DMA driver enables data movement from one host to
 another within the same Switchtec fabric.
 
 This mode is automatically turned on with Switchtec PAX DMA endpoint devices
@@ -60,7 +60,7 @@ DMA driver enables the following DMA transactions:
 
 #### Fabric DMA client interface
 
-In fabric mode, the Switchtec DMA driver extends the provider interface of the
+In fabric DMA mode, the Switchtec DMA driver extends the provider interface of the
 Linux DMAEngine framework, which means all of the current provider interfaces
 can still be used. For example, a fabric DMA client can use
 dma_request_channel() to get a DMA channel, dmaengine_submit() to submit a
