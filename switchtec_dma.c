@@ -190,19 +190,21 @@ struct chan_fw_regs {
 	u32 valid_en_se;
 	u32 cq_base_lo;
 	u32 cq_base_hi;
-	u32 cq_size;
+	u16 cq_size;
+	u16 rsvd1;
 	u32 sq_base_lo;
 	u32 sq_base_hi;
-	u32 sq_size;
+	u16 sq_size;
+	u16 rsvd2;
 	u32 int_vec;
 	u32 perf_cfg;
-	u32 rsvd1;
+	u32 rsvd3;
 	u32 perf_latency_selector;
 	u32 perf_fetched_se_cnt_lo;
 	u32 perf_fetched_se_cnt_hi;
 	u32 perf_byte_cnt_lo;
 	u32 perf_byte_cnt_hi;
-	u32 rsvd2;
+	u32 rsvd4;
 	u16 perf_se_pending;
 	u16 perf_se_buf_empty;
 	u32 perf_chan_idle;
@@ -1122,9 +1124,9 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 	writel(lower_32_bits(swdma_chan->dma_addr_cq), &chan_fw->cq_base_lo);
 	writel(upper_32_bits(swdma_chan->dma_addr_cq), &chan_fw->cq_base_hi);
 
-	writel((__force u16)cpu_to_le16(SWITCHTEC_DMA_SQ_SIZE),
+	writew((__force u16)cpu_to_le16(SWITCHTEC_DMA_SQ_SIZE),
 	       &swdma_chan->mmio_chan_fw->sq_size);
-	writel((__force u16)cpu_to_le16(SWITCHTEC_DMA_CQ_SIZE),
+	writew((__force u16)cpu_to_le16(SWITCHTEC_DMA_CQ_SIZE),
 	       &swdma_chan->mmio_chan_fw->cq_size);
 
 	rcu_read_unlock();
