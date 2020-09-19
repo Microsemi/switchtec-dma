@@ -318,7 +318,6 @@ struct switchtec_dma_dev {
 	void __iomem *mmio_chan_hw_all;
 	void __iomem *mmio_chan_fw_all;
 
-	struct tasklet_struct int_error_task;
 	struct tasklet_struct chan_status_task;
 
 	bool is_fabric;
@@ -3025,7 +3024,6 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 
 	switchtec_dma_chans_release(swdma_dev);
 
-	tasklet_kill(&swdma_dev->int_error_task);
 	tasklet_kill(&swdma_dev->chan_status_task);
 
 	if (swdma_dev->is_fabric) {
