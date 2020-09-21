@@ -622,6 +622,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	static struct switchtec_dma_hw_ce *ce;
 	int cid;
 	int se_idx;
+	u32 sts_code;
 	int i = 0;
 	int *p;
 
@@ -651,22 +652,23 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			p++;
 		}
 
-		if (!(le32_to_cpu(ce->sts_code) & SWITCHTEC_CE_SC_MASK)) {
+		sts_code = le32_to_cpu(ce->sts_code);
+		if (!(sts_code & SWITCHTEC_CE_SC_MASK)) {
 			dev_dbg(chan_dev,"CID 0x%04x Success\n", cid);
 			dev_dbg(chan_dev, "Requested byte count: 0x%08x\n",
 				desc->orig_size);
 			dev_dbg(chan_dev, "Completed byte count: 0x%08x\n",
 				le32_to_cpu(ce->cpl_byte_cnt));
 			res.result = DMA_TRANS_NOERROR;
-		} else if (le32_to_cpu(ce->sts_code) & SWITCHTEC_CE_SC_D_RD_CTO) {
+		} else if (sts_code & SWITCHTEC_CE_SC_D_RD_CTO) {
 			dev_err(chan_dev,
 				"CID 0x%04x Read failed, SC 0x%08x\n", cid,
-				(u32)(le32_to_cpu(ce->sts_code) & SWITCHTEC_CE_SC_MASK));
+				(u32)(sts_code & SWITCHTEC_CE_SC_MASK));
 			res.result = DMA_TRANS_READ_FAILED;
 		} else {
 			dev_err(chan_dev,
 				"CID 0x%04x Write failed, SC 0x%08x\n", cid,
-				(u32)(le32_to_cpu(ce->sts_code) & SWITCHTEC_CE_SC_MASK));
+				(u32)(sts_code & SWITCHTEC_CE_SC_MASK));
 			res.result = DMA_TRANS_WRITE_FAILED;
 		}
 
@@ -947,7 +949,8 @@ static dma_cookie_t switchtec_dma_tx_submit(
 
 	cookie = dma_cookie_assign(desc);
 
-	dev_dbg(to_chan_dev(swdma_chan), "ooo_dbg: submit SE (cookie: %x)\n", cookie);
+	dev_dbg(to_chan_dev(swdma_chan), "ooo_dbg: submit SE (cookie: %x)\n",
+		cookie);
 
 	spin_unlock_bh(&swdma_chan->submit_lock);
 
@@ -1025,7 +1028,7 @@ static irqreturn_t switchtec_dma_chan_status_isr(int irq, void *dma)
 static void switchtec_dma_free_desc(struct switchtec_dma_chan *swdma_chan)
 {
 	int i;
-        size_t size;
+	size_t size;
 	struct switchtec_dma_dev *swdma_dev = swdma_chan->swdma_dev;
 	struct pci_dev *pdev;
 
@@ -1378,7 +1381,8 @@ static int switchtec_dma_chans_release(struct switchtec_dma_dev *swdma_dev)
 
 static int switchtec_dma_get_chan_cnt(struct switchtec_dma_dev *swdma_dev)
 {
-	return le32_to_cpu((__force __le32)readl(&swdma_dev->mmio_dmac_cap->chan_cnt));
+	return le32_to_cpu((__force __le32)
+			readl(&swdma_dev->mmio_dmac_cap->chan_cnt));
 }
 
 static int switchtec_dma_chans_enumerate(struct switchtec_dma_dev *swdma_dev,
@@ -1746,9 +1750,11 @@ static ssize_t se_count_show(struct dma_chan *chan, char *page)
 		return -ENODEV;
 	}
 
-	count = le32_to_cpu((__force __le32)readl(&chan_fw->perf_fetched_se_cnt_hi));
+	count = le32_to_cpu((__force __le32)
+			readl(&chan_fw->perf_fetched_se_cnt_hi));
 	count <<= 32;
-	count |= le32_to_cpu((__force __le32)readl(&chan_fw->perf_fetched_se_cnt_lo));
+	count |= le32_to_cpu((__force __le32)
+			readl(&chan_fw->perf_fetched_se_cnt_lo));
 
 	rcu_read_unlock();
 	return sprintf(page, "0x%llx\n", count);
@@ -1896,11 +1902,12 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 		return -ENODEV;
 	}
 
-	lat = le32_to_cpu((__force __le32)readl(&chan_fw->perf_latency_selector));
+	lat = le32_to_cpu((__force __le32)
+			readl(&chan_fw->perf_latency_selector));
 
 	strcat(page, "To select a latency type, write the type number (1 ~ 4) to this file.\n\n");
 
-        strcat(page, "Latency Types (Selected latency type is shown with trailing (*))\n");
+	strcat(page, "Latency Types (Selected latency type is shown with trailing (*))\n");
 	strcat(page, "(1) SE Fetch latency");
 	if (lat & SWITCHTEC_LAT_SE_FETCH)
 		strcat(page, " (*)\n");
@@ -2325,7 +2332,8 @@ int switchtec_fabric_register_rhi_notify(struct dma_device *dma_dev,
 		return -EINVAL;
 
 	swdma_dev = to_switchtec_dma(dma_dev);
-	return atomic_notifier_chain_register(&swdma_dev->rhi_notifier_list, nb);
+	return atomic_notifier_chain_register(&swdma_dev->rhi_notifier_list,
+					      nb);
 }
 EXPORT_SYMBOL_GPL(switchtec_fabric_register_rhi_notify);
 
@@ -2408,7 +2416,8 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 		goto err_exit;
 	}
 
-	dev_dbg(dev, "Register Buffer (to hfid 0x%04x, index %d)\n", peer_hfid, buf_index);
+	dev_dbg(dev, "Register Buffer (to hfid 0x%04x, index %d)\n", peer_hfid,
+		buf_index);
 	dev_dbg(dev, "    dma addr:     0x%08x_%08x\n", upper_32_bits(buf_addr),
 		lower_32_bits(buf_addr));
 	dev_dbg(dev, "    dma size:     0x%08x_%08x\n", upper_32_bits(buf_size),
@@ -2735,7 +2744,8 @@ int switchtec_fabric_register_event_notify(struct dma_device *dma_dev,
 		return -EINVAL;
 
 	swdma_dev = to_switchtec_dma(dma_dev);
-	return atomic_notifier_chain_register(&swdma_dev->event_notifier_list, nb);
+	return atomic_notifier_chain_register(&swdma_dev->event_notifier_list,
+					      nb);
 }
 EXPORT_SYMBOL_GPL(switchtec_fabric_register_event_notify);
 
@@ -2773,7 +2783,8 @@ static int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 	swdma_dev->hfid = readw(&swdma_dev->mmio_fabric_ctrl->local_hfid);
 	swdma_dev->hfid = le16_to_cpu((__force __le16)swdma_dev->hfid);
 
-	swdma_dev->cmd = dmam_alloc_coherent(&pdev->dev, sizeof(*swdma_dev->cmd),
+	swdma_dev->cmd = dmam_alloc_coherent(&pdev->dev,
+					     sizeof(*swdma_dev->cmd),
 					     &swdma_dev->cmd_dma_addr,
 					     GFP_KERNEL);
 	if (!swdma_dev->cmd) {
@@ -2801,8 +2812,8 @@ static int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 		goto err_exit;
 	}
 
-	rc = devm_request_irq(&pdev->dev, irq, switchtec_dma_fabric_event_isr, 0,
-			      KBUILD_MODNAME, swdma_dev);
+	rc = devm_request_irq(&pdev->dev, irq, switchtec_dma_fabric_event_isr,
+			      0, KBUILD_MODNAME, swdma_dev);
 	if (rc)
 		goto err_exit;
 
@@ -2812,7 +2823,8 @@ static int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 
 	size = SWITCHTEC_DMA_EQ_SIZE * sizeof(struct switchtec_fabric_event) +
 		offsetof(struct fabric_event_queue, entries);
-	swdma_dev->eq = dmam_alloc_coherent(&pdev->dev, size, &swdma_dev->eq_dma_addr,
+	swdma_dev->eq = dmam_alloc_coherent(&pdev->dev, size,
+					    &swdma_dev->eq_dma_addr,
 					    GFP_KERNEL);
 	if (!swdma_dev->eq) {
 		rc = -ENOMEM;

@@ -159,7 +159,8 @@ static int __init dma_client_init(void)
 	/*
 	 * Register data DMA buffer to buffer slot 1 @ peer host
 	 */
-	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid, DATA_BUFFER_INDEX,
+	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid,
+					       DATA_BUFFER_INDEX,
 					       data_buf_dma_addr, data_buf_size,
 					       &data_cookie);
 	if (ret < 0) {
@@ -239,7 +240,7 @@ static void __exit dma_client_exit(void)
 	if (ret < 0)
 		printk("Failed to unregister RHI notify.\n");
 
-        switchtec_fabric_put_dma_device(dma_dev);
+	switchtec_fabric_put_dma_device(dma_dev);
 
 	dma_free_coherent(dma_dev->dev, spd_buf_size, spd_buf,
 			  spd_buf_dma_addr);

@@ -224,8 +224,9 @@ static int __init dma_client_init(void)
 			break;
 		}
 
+		t = timeout * 1000;
 		t = wait_for_completion_timeout(&event_comp,
-						msecs_to_jiffies(timeout * 1000));
+						msecs_to_jiffies(t));
 		if (t == 0) {
 			ret = -ETIME;
 			goto err_free_resource;
