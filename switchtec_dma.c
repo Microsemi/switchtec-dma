@@ -1412,9 +1412,8 @@ static ssize_t burst_scale_store(struct dma_chan *chan, const char *page,
 		goto err_unlock;
 	}
 
-	if (chan->client_count) {
+	if (chan->client_count)
 		goto err_unlock;
-	}
 
 	if (kstrtoint(page, 0, &burst_scale) == 0) {
 		if (burst_scale < PERF_MIN_BURST_SCALE ||
