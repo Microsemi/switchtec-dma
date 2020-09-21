@@ -1025,7 +1025,7 @@ static irqreturn_t switchtec_dma_chan_status_isr(int irq, void *dma)
 static void switchtec_dma_free_desc(struct switchtec_dma_chan *swdma_chan)
 {
 	int i;
-        size_t size;
+	size_t size;
 	struct switchtec_dma_dev *swdma_dev = swdma_chan->swdma_dev;
 	struct pci_dev *pdev;
 
@@ -1900,7 +1900,7 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 
 	strcat(page, "To select a latency type, write the type number (1 ~ 4) to this file.\n\n");
 
-        strcat(page, "Latency Types (Selected latency type is shown with trailing (*))\n");
+	strcat(page, "Latency Types (Selected latency type is shown with trailing (*))\n");
 	strcat(page, "(1) SE Fetch latency");
 	if (lat & SWITCHTEC_LAT_SE_FETCH)
 		strcat(page, " (*)\n");

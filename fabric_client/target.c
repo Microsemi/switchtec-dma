@@ -239,7 +239,7 @@ static void __exit dma_client_exit(void)
 	if (ret < 0)
 		printk("Failed to unregister RHI notify.\n");
 
-        switchtec_fabric_put_dma_device(dma_dev);
+	switchtec_fabric_put_dma_device(dma_dev);
 
 	dma_free_coherent(dma_dev->dev, spd_buf_size, spd_buf,
 			  spd_buf_dma_addr);
