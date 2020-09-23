@@ -623,12 +623,6 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 		cur_desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->tail);
 
 		res.residue = desc->orig_size - le32_to_cpu(ce->cpl_byte_cnt);
-		p = (int *)ce;
-		for (i = 0; i < sizeof(*ce)/4; i++) {
-			dev_dbg(chan_dev, "CE DW%d: 0x%08x\n", i,
-				le32_to_cpu((__force __le32)*p));
-			p++;
-		}
 
 		sts_code = le32_to_cpu(ce->sts_code);
 
