@@ -8,6 +8,13 @@ engine, but also embedded firmware and host software.
 The Switchtec DMA kernel module exports the access to the Switchtec DMA engine
 to the upper layer host software (DMA client).
 
+## Build
+The kernel source (instead of the kernel headers) is required to build the
+driver, since it depends on the header file drivers/dma/dmaengine.h in the
+kernel source tree. Run `make` to build the driver against the current kernel,
+or `make -C path-to-other-kernel-source M=$PWD modules` to build against anther
+kernel.
+
 ## Interface
 
 When configured, the Switchtec devices advertise a special DMA endpoint which
