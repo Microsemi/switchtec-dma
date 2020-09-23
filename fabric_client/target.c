@@ -27,7 +27,7 @@ static unsigned int peer_hfid;
 module_param(peer_hfid, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(peer_hfid, "Peer host port HFID(server)");
 
-struct fabric_dma_target {
+static struct fabric_dma_target {
 	struct scratchpad *spd;
 	unsigned long long *data;
 	struct tasklet_struct data_process_task;
@@ -53,10 +53,10 @@ static void target_data_process_task(unsigned long data)
 	printk("Memory verification succeeded.\n");
 }
 
-struct dma_device *dma_dev = NULL;
+static struct dma_device *dma_dev = NULL;
 
-int spd_cookie = 0;
-int data_cookie = 0;
+static int spd_cookie = 0;
+static int data_cookie = 0;
 static int rhi_notify(struct notifier_block *self,
 		      unsigned long cookie, void *dev)
 {
@@ -72,11 +72,11 @@ static struct notifier_block rhi_nb = {
 	.notifier_call = rhi_notify,
 };
 
-int *spd_buf;
-int *data_buf;
-size_t spd_buf_size;
-dma_addr_t spd_buf_dma_addr;
-dma_addr_t data_buf_dma_addr;
+static int *spd_buf;
+static int *data_buf;
+static size_t spd_buf_size;
+static dma_addr_t spd_buf_dma_addr;
+static dma_addr_t data_buf_dma_addr;
 static int __init dma_client_init(void)
 {
 	int ret;
@@ -159,7 +159,8 @@ static int __init dma_client_init(void)
 	/*
 	 * Register data DMA buffer to buffer slot 1 @ peer host
 	 */
-	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid, DATA_BUFFER_INDEX,
+	ret = switchtec_fabric_register_buffer(dma_dev, peer_hfid,
+					       DATA_BUFFER_INDEX,
 					       data_buf_dma_addr, data_buf_size,
 					       &data_cookie);
 	if (ret < 0) {
@@ -239,7 +240,7 @@ static void __exit dma_client_exit(void)
 	if (ret < 0)
 		printk("Failed to unregister RHI notify.\n");
 
-        switchtec_fabric_put_dma_device(dma_dev);
+	switchtec_fabric_put_dma_device(dma_dev);
 
 	dma_free_coherent(dma_dev->dev, spd_buf_size, spd_buf,
 			  spd_buf_dma_addr);
