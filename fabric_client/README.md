@@ -1,7 +1,5 @@
 # Switchtec Fabric DMA Driver Client Examples
 
-## Summary
-
 There are two Switchtec fabric DMA clients in this directory to help users
 understand the proprietary fabric APIs of the Switchtec DMA driver. They work in
 initiator and target mode, which are considered the most common use cases of
