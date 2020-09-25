@@ -60,7 +60,7 @@ static int data_cookie = 0;
 static int rhi_notify(struct notifier_block *self,
 		      unsigned long cookie, void *dev)
 {
-	printk("Receive RHI notification with cookie 0x%lx\n", cookie);
+	printk("Receive RHI notification with cookie %ld\n", cookie);
 
 	if (cookie == spd_cookie)
 		tasklet_schedule(&target.data_process_task);

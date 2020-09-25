@@ -1208,7 +1208,7 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 	/* halt channel first */
 	rc = halt_channel(swdma_chan);
 	if (rc) {
-		dev_err(dev, "Channel %d: halt failed\n", i);
+		dev_err(dev, "Channel %d: halt channel failed\n", i);
 		goto err_unlock_and_exit;
 	}
 
@@ -1225,11 +1225,11 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 
 	valid_en_se = readl(&chan_fw->valid_en_se);
 
-	dev_dbg(dev, "Channel %d: SE buf base 0x%x\n",
+	dev_dbg(dev, "Channel %d: SE buffer base %d\n",
 		i, (valid_en_se >> SE_BUF_BASE_SHIFT) & SE_BUF_BASE_MASK);
 
 	se_buf_len = (valid_en_se >> SE_BUF_LEN_SHIFT) & SE_BUF_LEN_MASK;
-	dev_dbg(dev, "Channel %d: SE buf cnt 0x%x\n", i, se_buf_len);
+	dev_dbg(dev, "Channel %d: SE buffer count %d\n", i, se_buf_len);
 
 	thresh = se_buf_len / 2;
 	valid_en_se |= (thresh & SE_THRESH_MASK) << SE_THRESH_SHIFT;
@@ -1237,7 +1237,7 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 
 	/* request irqs */
 	irq = readl(&chan_fw->int_vec);
-	dev_dbg(dev, "Channel %d: irq vec 0x%x\n", i, irq);
+	dev_dbg(dev, "Channel %d: CE irq vector %d\n", i, irq);
 
 	irq = pci_irq_vector(pdev, irq);
 	if (irq < 0) {
@@ -1341,15 +1341,16 @@ static int switchtec_dma_chans_enumerate(struct switchtec_dma_dev *swdma_dev,
 
 	base = readw(&swdma_dev->mmio_dmac_cap->se_buf_base);
 	cnt = readw(&swdma_dev->mmio_dmac_cap->se_buf_cnt);
-	dev_dbg(&pdev->dev, "EP SE buf base 0x%x\n", base);
-	dev_dbg(&pdev->dev, "EP SE buf cnt 0x%x\n", cnt);
+	dev_dbg(&pdev->dev, "EP SE buffer base %d\n", base);
+	dev_dbg(&pdev->dev, "EP SE buffer count %d\n", cnt);
 
 	INIT_LIST_HEAD(&dma->channels);
 
 	for (i = 0; i < chan_cnt; i++) {
 		rc = switchtec_dma_chan_init(swdma_dev, i);
 		if (rc) {
-			dev_err(&pdev->dev, "Channel %d: init failed\n", i);
+			dev_err(&pdev->dev, "Channel %d: init channel failed\n",
+				i);
 			goto err_unlock_and_exit;
 		}
 	}
@@ -2349,8 +2350,8 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 		lower_32_bits(buf_addr));
 	dev_dbg(dev, "    dma size:     0x%08x_%08x\n", upper_32_bits(buf_size),
 		lower_32_bits(buf_size));
-	dev_dbg(dev, "    vector:       %x", le16_to_cpu(rsp.buf_vec));
-	dev_dbg(dev, "    irq (cookie): 0x%x", irq);
+	dev_dbg(dev, "    vector:       %d", le16_to_cpu(rsp.buf_vec));
+	dev_dbg(dev, "    irq (cookie): %d", irq);
 
 	*cookie = irq;
 
@@ -2731,7 +2732,7 @@ static int switchtec_dma_init_fabric(struct switchtec_dma_dev *swdma_dev)
 		     (unsigned long)swdma_dev);
 
 	irq = readw(&swdma_dev->mmio_fabric_ctrl->event_vec);
-	dev_dbg(&pdev->dev, "Fabric event irq vec 0x%x\n", irq);
+	dev_dbg(&pdev->dev, "Fabric event irq vector %d\n", irq);
 
 	irq = pci_irq_vector(pdev, irq);
 	if (irq < 0) {
@@ -2793,6 +2794,7 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	int nr_vecs;
 	int irq;
 	int rc;
+	int i;
 
 	/*
 	 * Create the switchtec dma device
@@ -2818,6 +2820,9 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 			SWITCHTEC_DMAC_FABRIC_CTRL_OFFSET;
 
 		readw(&swdma_dev->mmio_fabric_ctrl->requestor_id);
+		dev_info(dev, "Switchtec PAX DMA EP\n");
+	} else {
+		dev_info(dev, "Switchtec PSX/PFX DMA EP\n");
 	}
 
 	RCU_INIT_POINTER(swdma_dev->pdev, pdev);
@@ -2833,7 +2838,7 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 		     (unsigned long)swdma_dev);
 
 	irq = readw(&swdma_dev->mmio_dmac_cap->chan_sts_vec);
-	dev_dbg(dev, "Channel pause irq vec 0x%x\n", irq);
+	dev_dbg(dev, "Channel pause irq vector %d\n", irq);
 
 	irq = pci_irq_vector(pdev, irq);
 	if (irq < 0) {
@@ -2894,8 +2899,9 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 		goto err_exit;
 	}
 
+	i = 0;
 	list_for_each_entry(chan, &dma->channels, device_node)
-		pci_info(pdev, "Channel: %s\n", dma_chan_name(chan));
+		pci_info(pdev, "Channel %d: %s\n", i++, dma_chan_name(chan));
 
 	pci_set_drvdata(pdev, swdma_dev);
 
