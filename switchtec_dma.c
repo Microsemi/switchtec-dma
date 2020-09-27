@@ -2152,9 +2152,8 @@ struct dma_device *switchtec_fabric_get_dma_device(char *name)
 
 	list_for_each_entry(d, &dma_list, list) {
 		sprintf(dev_name, "dma%d", d->dma_dev.dev_id);
-		if (!strcmp(name, dev_name)) {
+		if (!strcmp(name, dev_name))
 			return &d->dma_dev;
-		}
 	}
 
 	return NULL;
@@ -2829,9 +2828,8 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 
 	nr_vecs = pci_msix_vec_count(pdev);
 	rc = pci_alloc_irq_vectors(pdev, nr_vecs, nr_vecs, PCI_IRQ_MSIX);
-	if (rc < 0) {
+	if (rc < 0)
 		goto err_exit;
-	}
 
 	tasklet_init(&swdma_dev->chan_status_task,
 		     switchtec_dma_chan_status_task,
@@ -2967,9 +2965,8 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 
 	tasklet_kill(&swdma_dev->chan_status_task);
 
-	if (swdma_dev->is_fabric) {
+	if (swdma_dev->is_fabric)
 		tasklet_kill(&swdma_dev->fabric_event_task);
-	}
 
 	rcu_assign_pointer(swdma_dev->pdev, NULL);
 	synchronize_rcu();
