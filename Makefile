@@ -23,7 +23,7 @@ version.h: FORCE $(OBJDIR)
 modules: | version.h
 
 %::
-	$(MAKE) -C $(KERNEL_SOURCES) M=$$PWD $@
+	$(MAKE) -C $(KERNEL_SOURCES) M=$$PWD C=1 $@
 
 clean::
 	rm -f version.h
