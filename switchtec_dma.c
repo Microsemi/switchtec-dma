@@ -826,7 +826,6 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 
 	desc->txd.flags = flags;
 
-	desc->completed = false;
 	if (type == MEMCPY) {
 		desc->hw->opc = SWITCHTEC_DMA_OPC_MEMCPY;
 		desc->hw->saddr_lo = cpu_to_le32(lower_32_bits(dma_src));
@@ -1052,7 +1051,7 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 		dma_async_tx_descriptor_init(&desc->txd, &swdma_chan->dma_chan);
 		desc->txd.tx_submit = switchtec_dma_tx_submit;
 		desc->hw = &swdma_chan->hw_sq[i];
-		desc->completed = true;
+		desc->completed = false;
 
 		swdma_chan->desc_ring[i] = desc;
 	}
