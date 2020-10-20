@@ -601,6 +601,8 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	struct dmaengine_result res;
 	struct switchtec_dma_desc *desc, *cur_desc;
 	static struct switchtec_dma_hw_ce *ce;
+	__le16 phase_tag;
+	int tail;
 	int cid;
 	int se_idx;
 	u32 sts_code;
@@ -611,7 +613,8 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 		spin_lock_bh(&swdma_chan->complete_lock);
 
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
-		if (le16_to_cpu(ce->phase_tag) == swdma_chan->phase_tag) {
+		phase_tag = smp_load_acquire(&ce->phase_tag);
+		if (le16_to_cpu(phase_tag) == swdma_chan->phase_tag) {
 			spin_unlock_bh(&swdma_chan->complete_lock);
 			break;
 		}
@@ -619,6 +622,8 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 		cid = le16_to_cpu(ce->cid);
 		se_idx = cid & (SWITCHTEC_DMA_SQ_SIZE - 1);
 		desc = switchtec_dma_get_desc(swdma_chan, se_idx);
+
+		tail = swdma_chan->tail;
 		cur_desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->tail);
 
 		res.residue = desc->orig_size - le32_to_cpu(ce->cpl_byte_cnt);
@@ -654,7 +659,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			swdma_chan->phase_tag = !swdma_chan->phase_tag;
 
 		/*  Out of order CE */
-		if (se_idx != swdma_chan->tail) {
+		if (se_idx != tail) {
 			spin_unlock_bh(&swdma_chan->complete_lock);
 			continue;
 		}
@@ -667,13 +672,14 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 			desc->txd.callback_result = NULL;
 			desc->completed = false;
 
-			swdma_chan->tail++;
-			swdma_chan->tail &= SWITCHTEC_DMA_SQ_SIZE - 1;
+			tail++;
+			tail &= SWITCHTEC_DMA_SQ_SIZE - 1;
+			smp_store_release(&swdma_chan->tail, tail);
 			desc = switchtec_dma_get_desc(swdma_chan,
 						      swdma_chan->tail);
 			if (!desc->completed)
 				break;
-		} while (CIRC_CNT(swdma_chan->head, swdma_chan->tail,
+		} while (CIRC_CNT(READ_ONCE(swdma_chan->head), swdma_chan->tail,
 				  SWITCHTEC_DMA_SQ_SIZE));
 
 		spin_unlock_bh(&swdma_chan->complete_lock);
@@ -782,6 +788,8 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(c);
 	struct device *chan_dev = to_chan_dev(swdma_chan);
 	struct switchtec_dma_desc *desc;
+	int head;
+	int tail;
 
 	spin_lock_bh(&swdma_chan->submit_lock);
 
@@ -803,15 +811,13 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 	if (!swdma_chan->ring_active)
 		goto err_unlock;
 
-	if (!CIRC_SPACE(swdma_chan->head, swdma_chan->tail,
-			SWITCHTEC_DMA_RING_SIZE))
+	tail = READ_ONCE(swdma_chan->tail);
+	head = swdma_chan->head;
+
+	if (!CIRC_SPACE(head, tail, SWITCHTEC_DMA_RING_SIZE))
 		goto err_unlock;
 
-	desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->head);
-	swdma_chan->head++;
-
-	if (swdma_chan->head == SWITCHTEC_DMA_RING_SIZE)
-		swdma_chan->head = 0;
+	desc = switchtec_dma_get_desc(swdma_chan, head);
 
 	if (src_fid != SWITCHTEC_INVALID_HFID &&
 	    dst_fid != SWITCHTEC_INVALID_HFID)
@@ -844,6 +850,10 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 	swdma_chan->cid &= SWITCHTEC_SE_CID_MASK;
 	desc->hw->cid = cpu_to_le16(swdma_chan->cid++);
 	desc->orig_size = len;
+
+	head++;
+	head &= SWITCHTEC_DMA_RING_SIZE - 1;
+	smp_store_release(&swdma_chan->head, head);
 
 	/* return with the lock held, it will be released in tx_submit */
 
