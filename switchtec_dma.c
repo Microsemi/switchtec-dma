@@ -426,7 +426,6 @@ struct switchtec_dma_hw_ce {
 struct switchtec_dma_desc {
 	struct dma_async_tx_descriptor txd;
 	struct switchtec_dma_hw_se_desc *hw;
-	u32 index;
 	u32 orig_size;
 	bool completed;
 };
@@ -844,7 +843,6 @@ static struct dma_async_tx_descriptor *switchtec_dma_prep_desc(
 	desc->hw->sfid = cpu_to_le16(src_fid);
 	swdma_chan->cid &= SWITCHTEC_SE_CID_MASK;
 	desc->hw->cid = cpu_to_le16(swdma_chan->cid++);
-	desc->index = swdma_chan->head;
 	desc->orig_size = len;
 
 	/* return with the lock held, it will be released in tx_submit */
