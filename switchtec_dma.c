@@ -599,7 +599,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 {
 	struct device *chan_dev = to_chan_dev(swdma_chan);
 	struct dmaengine_result res;
-	struct switchtec_dma_desc *desc, *cur_desc;
+	struct switchtec_dma_desc *desc;
 	static struct switchtec_dma_hw_ce *ce;
 	__le16 phase_tag;
 	int tail;
@@ -624,7 +624,6 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 		desc = switchtec_dma_get_desc(swdma_chan, se_idx);
 
 		tail = swdma_chan->tail;
-		cur_desc = switchtec_dma_get_desc(swdma_chan, swdma_chan->tail);
 
 		res.residue = desc->orig_size - le32_to_cpu(ce->cpl_byte_cnt);
 
