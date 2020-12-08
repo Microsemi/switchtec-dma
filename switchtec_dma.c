@@ -433,7 +433,6 @@ struct switchtec_dma_desc {
 #define HALT_RETRY 100
 static int halt_channel(struct switchtec_dma_chan *swdma_chan)
 {
-	u8 ctrl;
 	u32 status;
 	struct chan_hw_regs __iomem *chan_hw = swdma_chan->mmio_chan_hw;
 	int retry = HALT_RETRY;
@@ -447,10 +446,7 @@ static int halt_channel(struct switchtec_dma_chan *swdma_chan)
 		goto unlock_and_exit;
 	}
 
-	ctrl = readb(&chan_hw->ctrl);
-
-	ctrl |= SWITCHTEC_CHAN_CTRL_HALT | SWITCHTEC_CHAN_CTRL_RESET;
-	writeb(ctrl, &chan_hw->ctrl);
+	writeb(SWITCHTEC_CHAN_CTRL_HALT, &chan_hw->ctrl);
 
 	do {
 		status = readl(&chan_hw->status);
