@@ -714,25 +714,27 @@ static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
 	spin_unlock_bh(&swdma_chan->complete_lock);
 }
 
-static void __switchtec_dma_chan_stop(struct switchtec_dma_chan *swdma_chan)
-{
-	writeb(SWITCHTEC_CHAN_CTRL_HALT, &swdma_chan->mmio_chan_hw->ctrl);
-
-	writel(0, &swdma_chan->mmio_chan_fw->sq_base_lo);
-	writel(0, &swdma_chan->mmio_chan_fw->sq_base_hi);
-	writel(0, &swdma_chan->mmio_chan_fw->cq_base_lo);
-	writel(0, &swdma_chan->mmio_chan_fw->cq_base_hi);
-}
-
 static void switchtec_dma_chan_stop(struct switchtec_dma_chan *swdma_chan)
 {
+	int rc;
+
 	rcu_read_lock();
 	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
 		rcu_read_unlock();
 		return;
 	}
 
-	__switchtec_dma_chan_stop(swdma_chan);
+	rc = halt_channel(swdma_chan);
+	if (rc) {
+		dev_err(to_chan_dev(swdma_chan), "stop channel failed\n");
+		rcu_read_unlock();
+		return;
+	}
+
+	writel(0, &swdma_chan->mmio_chan_fw->sq_base_lo);
+	writel(0, &swdma_chan->mmio_chan_fw->sq_base_hi);
+	writel(0, &swdma_chan->mmio_chan_fw->cq_base_lo);
+	writel(0, &swdma_chan->mmio_chan_fw->cq_base_hi);
 
 	rcu_read_unlock();
 }
@@ -1298,7 +1300,7 @@ static int switchtec_dma_chan_free(struct switchtec_dma_chan *swdma_chan)
 
 	switchtec_chan_kobject_del(swdma_chan);
 
-	__switchtec_dma_chan_stop(swdma_chan);
+	switchtec_dma_chan_stop(swdma_chan);
 
 	rcu_read_unlock();
 	return 0;
