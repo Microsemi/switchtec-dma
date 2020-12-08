@@ -530,6 +530,33 @@ static int reset_channel(struct switchtec_dma_chan *swdma_chan)
 	return 0;
 }
 
+static int pause_reset_channel(struct switchtec_dma_chan *swdma_chan)
+{
+	struct chan_hw_regs __iomem *chan_hw = swdma_chan->mmio_chan_hw;
+	struct pci_dev *pdev;
+	int ret = 0;
+
+	rcu_read_lock();
+	pdev = rcu_dereference(swdma_chan->swdma_dev->pdev);
+	if (!pdev) {
+		ret = -ENODEV;
+		goto unlock_and_exit;
+	}
+
+	/* pause channel */
+	writeb(SWITCHTEC_CHAN_CTRL_PAUSE, &chan_hw->ctrl);
+
+	/* wait 60ms to ensure no pending CEs */
+	msleep(60);
+
+	/* reset channel */
+	ret = reset_channel(swdma_chan);
+
+unlock_and_exit:
+	rcu_read_unlock();
+	return ret;
+}
+
 static int enable_channel(struct switchtec_dma_chan *swdma_chan)
 {
 	u32 valid_en_se;
@@ -1210,10 +1237,9 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 	swdma_chan->mmio_chan_hw = chan_hw;
 	swdma_chan->swdma_dev = swdma_dev;
 
-	/* halt channel first */
-	rc = halt_channel(swdma_chan);
+	rc = pause_reset_channel(swdma_chan);
 	if (rc) {
-		dev_err(dev, "Channel %d: halt channel failed\n", i);
+		dev_err(dev, "Channel %d: pause and reset channel failed\n", i);
 		goto err_unlock_and_exit;
 	}
 
