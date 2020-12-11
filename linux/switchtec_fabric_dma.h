@@ -112,9 +112,10 @@ struct switchtec_fabric_event {
 		 */
 		struct register_buf_data {
 			u16 hfid;
-			u16 rhi_index;
 			u8 index;
-			u8 rsvd[3];
+			u8 rsvd1;
+			u16 rhi_index;
+			u8 rsvd2[2];
 		} reg_buf_data;
 
 		/**
