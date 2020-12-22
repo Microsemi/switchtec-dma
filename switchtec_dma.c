@@ -623,7 +623,7 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	struct device *chan_dev = to_chan_dev(swdma_chan);
 	struct dmaengine_result res;
 	struct switchtec_dma_desc *desc;
-	static struct switchtec_dma_hw_ce *ce;
+	struct switchtec_dma_hw_ce *ce;
 	__le16 phase_tag;
 	int tail;
 	int cid;
