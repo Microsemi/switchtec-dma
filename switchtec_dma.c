@@ -455,7 +455,7 @@ static int halt_channel(struct switchtec_dma_chan *swdma_chan)
 			ret = 0;
 			goto unlock_and_exit;
 		} else {
-			msleep(1);
+			udelay(1000);
 		}
 	} while (retry--);
 
@@ -493,7 +493,7 @@ static int unhalt_channel(struct switchtec_dma_chan *swdma_chan)
 			ret = 0;
 			goto unlock_and_exit;
 		} else {
-			msleep(1);
+			udelay(1000);
 		}
 	} while (retry--);
 
@@ -521,7 +521,7 @@ static int reset_channel(struct switchtec_dma_chan *swdma_chan)
 	ctrl |= SWITCHTEC_CHAN_CTRL_ERR_PAUSE;
 	writel(ctrl, &chan_hw->ctrl);
 
-	msleep(1);
+	udelay(1000);
 
 	ctrl = SWITCHTEC_CHAN_CTRL_ERR_PAUSE;
 	writel(ctrl, &chan_hw->ctrl);
