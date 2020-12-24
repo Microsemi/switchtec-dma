@@ -1020,6 +1020,7 @@ static void switchtec_dma_free_desc(struct switchtec_dma_chan *swdma_chan)
 		rcu_read_unlock();
 		return;
 	}
+	rcu_read_unlock();
 
 	size = SWITCHTEC_DMA_SQ_SIZE * sizeof(*swdma_chan->hw_sq);
 	if (swdma_chan->hw_sq)
@@ -1038,8 +1039,6 @@ static void switchtec_dma_free_desc(struct switchtec_dma_chan *swdma_chan)
 
 		kfree(swdma_chan->desc_ring);
 	}
-
-	rcu_read_unlock();
 }
 
 static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
@@ -1049,7 +1048,11 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 	struct chan_fw_regs __iomem *chan_fw = swdma_chan->mmio_chan_fw;
 	size_t size;
 	struct switchtec_dma_desc *desc;
+	int rc;
 	int i;
+
+	swdma_chan->head = swdma_chan->tail = 0;
+	swdma_chan->cq_tail = 0;
 
 	rcu_read_lock();
 	pdev = rcu_dereference(swdma_dev->pdev);
@@ -1057,24 +1060,25 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 		rcu_read_unlock();
 		return -ENODEV;
 	}
-
-	swdma_chan->head = swdma_chan->tail = 0;
-	swdma_chan->cq_tail = 0;
+	rcu_read_unlock();
 
 	size = SWITCHTEC_DMA_SQ_SIZE * sizeof(*swdma_chan->hw_sq);
 	swdma_chan->hw_sq = dmam_alloc_coherent(&pdev->dev, size,
 						&swdma_chan->dma_addr_sq,
 						GFP_KERNEL);
-	if (!swdma_chan->hw_sq)
-		goto err_unlock_free_and_exit;
-
+	if (!swdma_chan->hw_sq) {
+		rc = -ENOMEM;
+		goto free_and_exit;
+	}
 
 	size = SWITCHTEC_DMA_CQ_SIZE * sizeof(*swdma_chan->hw_cq);
 	swdma_chan->hw_cq = dmam_alloc_coherent(&pdev->dev, size,
 						&swdma_chan->dma_addr_cq,
 						GFP_KERNEL);
-	if (!swdma_chan->hw_cq)
-		goto err_unlock_free_and_exit;
+	if (!swdma_chan->hw_cq) {
+		rc = -ENOMEM;
+		goto free_and_exit;
+	}
 
 	memset(swdma_chan->hw_cq, 0, size);
 
@@ -1084,15 +1088,19 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 	size = sizeof(*swdma_chan->desc_ring);
 	swdma_chan->desc_ring = kcalloc(SWITCHTEC_DMA_RING_SIZE,
 					size, GFP_KERNEL);
-	if (!swdma_chan->desc_ring)
-		goto err_unlock_free_and_exit;
+	if (!swdma_chan->desc_ring) {
+		rc = -ENOMEM;
+		goto free_and_exit;
+	}
 
 	memset(swdma_chan->desc_ring, 0, SWITCHTEC_DMA_RING_SIZE * size);
 
 	for (i = 0; i < SWITCHTEC_DMA_RING_SIZE; i++) {
 		desc = kzalloc(sizeof(*desc), GFP_KERNEL);
-		if (!desc)
-			goto err_unlock_free_and_exit;
+		if (!desc) {
+			rc = -ENOMEM;
+			goto free_and_exit;
+		}
 
 		dma_async_tx_descriptor_init(&desc->txd, &swdma_chan->dma_chan);
 		desc->txd.tx_submit = switchtec_dma_tx_submit;
@@ -1100,6 +1108,14 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 		desc->completed = true;
 
 		swdma_chan->desc_ring[i] = desc;
+	}
+
+	rcu_read_lock();
+	pdev = rcu_dereference(swdma_dev->pdev);
+	if (!pdev) {
+		rcu_read_unlock();
+		rc = -ENODEV;
+		goto free_and_exit;
 	}
 
 	/* set sq/cq */
@@ -1116,10 +1132,9 @@ static int switchtec_dma_alloc_desc(struct switchtec_dma_chan *swdma_chan)
 	rcu_read_unlock();
 	return 0;
 
-err_unlock_free_and_exit:
-	rcu_read_unlock();
+free_and_exit:
 	switchtec_dma_free_desc(swdma_chan);
-	return -ENOMEM;
+	return rc;
 }
 
 static int switchtec_dma_alloc_chan_resources(struct dma_chan *chan)
@@ -1228,17 +1243,16 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 	rcu_read_lock();
 	pdev = rcu_dereference(swdma_dev->pdev);
 	if (!pdev) {
-		rc = -ENODEV;
-		goto err_unlock_and_exit;
+		rcu_read_unlock();
+		return -ENODEV;
 	}
+	rcu_read_unlock();
 
 	dev = &pdev->dev;
 
 	swdma_chan = devm_kzalloc(dev, sizeof(*swdma_chan), GFP_KERNEL);
-	if (!swdma_chan) {
-		rc = -ENOMEM;
-		goto err_unlock_and_exit;
-	}
+	if (!swdma_chan)
+		return -ENOMEM;
 
 	swdma_chan->phase_tag = 0;
 	swdma_chan->index = i;
