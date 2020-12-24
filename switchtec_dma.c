@@ -672,7 +672,15 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 
 		swdma_chan->cq_tail++;
 		swdma_chan->cq_tail &= SWITCHTEC_DMA_CQ_SIZE - 1;
+
+		rcu_read_lock();
+		if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+			rcu_read_unlock();
+			spin_unlock_bh(&swdma_chan->complete_lock);
+			return;
+		}
 		writew(swdma_chan->cq_tail, &swdma_chan->mmio_chan_hw->cq_head);
+		rcu_read_unlock();
 
 		if (swdma_chan->cq_tail == 0)
 			swdma_chan->phase_tag = !swdma_chan->phase_tag;
