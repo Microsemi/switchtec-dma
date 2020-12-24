@@ -746,15 +746,14 @@ static void switchtec_dma_chan_stop(struct switchtec_dma_chan *swdma_chan)
 {
 	int rc;
 
-	rcu_read_lock();
-	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
-		rcu_read_unlock();
-		return;
-	}
-
 	rc = halt_channel(swdma_chan);
 	if (rc) {
 		dev_err(to_chan_dev(swdma_chan), "stop channel failed\n");
+		return;
+	}
+
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
 		rcu_read_unlock();
 		return;
 	}
@@ -1130,28 +1129,35 @@ static int switchtec_dma_alloc_chan_resources(struct dma_chan *chan)
 	u32 perf_cfg;
 	int rc;
 
-	rcu_read_lock();
-	if (!rcu_dereference(swdma_dev->pdev)) {
-		rcu_read_unlock();
-		return -ENODEV;
-	}
-
 	rc = switchtec_dma_alloc_desc(swdma_chan);
-	if (rc) {
-		rcu_read_unlock();
+	if (rc)
 		return rc;
-	}
 
-	enable_channel(swdma_chan);
-	reset_channel(swdma_chan);
-	unhalt_channel(swdma_chan);
+	rc = enable_channel(swdma_chan);
+	if (rc)
+		return rc;
+
+	rc = reset_channel(swdma_chan);
+	if (rc)
+		return rc;
+
+	rc = unhalt_channel(swdma_chan);
+	if (rc)
+		return rc;
 
 	swdma_chan->ring_active = true;
 	swdma_chan->cid = 0;
 
 	dma_cookie_init(chan);
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	perf_cfg = readl(&swdma_chan->mmio_chan_fw->perf_cfg);
+	rcu_read_unlock();
 
 	dev_dbg(&chan->dev->device, "Burst Size:  0x%x",
 		(perf_cfg >> PERF_BURST_SIZE_SHIFT) & PERF_BURST_SIZE_MASK);
@@ -1168,7 +1174,6 @@ static int switchtec_dma_alloc_chan_resources(struct dma_chan *chan)
 	dev_dbg(&chan->dev->device, "MRRS:        0x%x",
 		(perf_cfg >> PERF_MRRS_SHIFT) & PERF_MRRS_MASK);
 
-	rcu_read_unlock();
 	return SWITCHTEC_DMA_SQ_SIZE;
 }
 
@@ -1327,6 +1332,7 @@ static int switchtec_dma_chan_free(struct switchtec_dma_chan *swdma_chan)
 		rcu_read_unlock();
 		return -ENODEV;
 	}
+	rcu_read_unlock();
 
 	spin_lock_bh(&swdma_chan->submit_lock);
 	swdma_chan->ring_active = false;
@@ -1338,7 +1344,6 @@ static int switchtec_dma_chan_free(struct switchtec_dma_chan *swdma_chan)
 
 	switchtec_dma_chan_stop(swdma_chan);
 
-	rcu_read_unlock();
 	return 0;
 }
 
@@ -2367,6 +2372,12 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 	if (!dma_dev || !is_fabric_dma(dma_dev) || !cookie)
 		return -EINVAL;
 
+	size = sizeof(rsp);
+	ret = execute_cmd(swdma_dev, CMD_REGISTER_BUF, &req, sizeof(req),
+			  &rsp, &size);
+	if (ret < 0)
+		return ret;
+
 	rcu_read_lock();
 	pdev = rcu_dereference(swdma_dev->pdev);
 	if (!pdev) {
@@ -2374,17 +2385,11 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 		return -ENODEV;
 	}
 
-	size = sizeof(rsp);
-	ret = execute_cmd(swdma_dev, CMD_REGISTER_BUF, &req, sizeof(req),
-			  &rsp, &size);
-	if (ret < 0)
-		goto err_exit;
-
 	irq = pci_irq_vector(pdev, le16_to_cpu(rsp.buf_vec));
-	if (irq < 0) {
-		ret = -ENXIO;
-		goto err_exit;
-	}
+	rcu_read_unlock();
+
+	if (irq < 0)
+		return -ENXIO;
 
 	dev_dbg(dev, "Register Buffer (to hfid 0x%04x, index %d)\n", peer_hfid,
 		buf_index);
@@ -2400,8 +2405,6 @@ int switchtec_fabric_register_buffer(struct dma_device *dma_dev, u16 peer_hfid,
 	ret = devm_request_irq(dev, irq, switchtec_dma_fabric_rhi_isr, 0,
 			       KBUILD_MODNAME, swdma_dev);
 
-err_exit:
-	rcu_read_unlock();
 	return ret;
 }
 EXPORT_SYMBOL(switchtec_fabric_register_buffer);
@@ -2410,7 +2413,6 @@ int switchtec_fabric_unregister_buffer(struct dma_device *dma_dev,
 				       u16 peer_hfid, u8 buf_index, int cookie)
 {
 	struct switchtec_dma_dev *swdma_dev = to_switchtec_dma(dma_dev);
-	struct pci_dev *pdev;
 	int ret = 0;
 
 	struct {
@@ -2425,22 +2427,10 @@ int switchtec_fabric_unregister_buffer(struct dma_device *dma_dev,
 	if (!dma_dev || !is_fabric_dma(dma_dev))
 		return -EINVAL;
 
-	rcu_read_lock();
-	pdev = rcu_dereference(swdma_dev->pdev);
-	if (!pdev) {
-		rcu_read_unlock();
-		return -ENODEV;
-	}
+	devm_free_irq(dma_dev->dev, cookie, swdma_dev);
 
 	ret = execute_cmd(swdma_dev, CMD_UNREGISTER_BUF, &req, sizeof(req),
 			  NULL, NULL);
-	if (ret < 0)
-		goto err_exit;
-
-	devm_free_irq(&pdev->dev, cookie, swdma_dev);
-
-err_exit:
-	rcu_read_unlock();
 	return ret;
 }
 EXPORT_SYMBOL(switchtec_fabric_unregister_buffer);
