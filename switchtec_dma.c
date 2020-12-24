@@ -789,8 +789,17 @@ static void switchtec_dma_chan_status_task(unsigned long data)
 		swdma_chan = to_switchtec_dma_chan(chan);
 		chan_dev = to_chan_dev(swdma_chan);
 		chan_hw = swdma_chan->mmio_chan_hw;
+
+		rcu_read_lock();
+		if (!rcu_dereference(swdma_dev->pdev)) {
+			rcu_read_unlock();
+			return;
+		}
+
 		chan_status = readl(&chan_hw->status);
 		chan_status &= SWITCHTEC_CHAN_STS_PAUSED_MASK;
+		rcu_read_unlock();
+
 		bit = ffs(chan_status);
 		if (!bit)
 			dev_dbg(chan_dev, "No pause bit set.");
