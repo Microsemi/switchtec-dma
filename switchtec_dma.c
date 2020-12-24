@@ -1332,7 +1332,7 @@ static int switchtec_dma_chans_release(struct switchtec_dma_dev *swdma_dev)
 {
 	int i;
 
-	for (i = 0; i < swdma_dev->dma_dev.chancnt; i++)
+	for (i = 0; i < swdma_dev->chan_cnt; i++)
 		switchtec_dma_chan_free(swdma_dev->swdma_chans[i]);
 
 	return 0;
@@ -1386,10 +1386,8 @@ static int switchtec_dma_chans_enumerate(struct switchtec_dma_dev *swdma_dev,
 		}
 	}
 
-	dma->chancnt = chan_cnt;
-
 	rcu_read_unlock();
-	return dma->chancnt;
+	return chan_cnt;
 
 err_unlock_and_exit:
 	rcu_read_unlock();
@@ -2901,7 +2899,7 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	swdma_dev->is_fabric = is_fabric;
 
 	dma = &swdma_dev->dma_dev;
-	pci_info(pdev, "Channel count: %d\n", dma->chancnt);
+	pci_info(pdev, "Channel count: %d\n", chan_cnt);
 	dma->copy_align = DMAENGINE_ALIGN_1_BYTE;
 	dma_cap_set(DMA_MEMCPY, dma->cap_mask);
 	dma_cap_set(DMA_PRIVATE, dma->cap_mask);
