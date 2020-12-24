@@ -963,12 +963,6 @@ static void switchtec_dma_issue_pending(struct dma_chan *chan)
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
 	struct switchtec_dma_dev *swdma_dev = swdma_chan->swdma_dev;
 
-	rcu_read_lock();
-	if (!rcu_dereference(swdma_dev->pdev)) {
-		rcu_read_unlock();
-		return;
-	}
-
 	/*
 	 * Ensure the desc updates are visible before starting the
 	 * DMA engine.
@@ -980,6 +974,12 @@ static void switchtec_dma_issue_pending(struct dma_chan *chan)
 	 * submisssion queue. Chip has the opposite define of head/tail
 	 * to the Linux kernel.
 	 */
+
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return;
+	}
 
 	spin_lock_bh(&swdma_chan->submit_lock);
 	writew(swdma_chan->head, &swdma_chan->mmio_chan_hw->sq_tail);
