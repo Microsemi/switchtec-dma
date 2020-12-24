@@ -2156,20 +2156,23 @@ static int execute_cmd(struct switchtec_dma_dev *swdma_dev, u32 cmd,
 	size_t size;
 	int ret = 0;
 
+	mutex_lock(&swdma_dev->cmd_mutex);
+
 	rcu_read_lock();
 	pdev = rcu_dereference(swdma_dev->pdev);
 	if (!pdev) {
+		rcu_read_unlock();
 		ret = -ENODEV;
 		goto out;
 	}
-
-	mutex_lock(&swdma_dev->cmd_mutex);
 
 	swdma_dev->cmd->status = CMD_STATUS_IDLE;
 	memset(swdma_dev->cmd->data, 0xFF, CMD_OUTPUT_SIZE);
 
 	memcpy_toio(&swdma_dev->mmio_fabric_cmd->input, input, input_size);
 	iowrite32(cmd, &swdma_dev->mmio_fabric_cmd->command);
+
+	rcu_read_unlock();
 
 	wait_timeout = jiffies + msecs_to_jiffies(CMD_TIMEOUT_MSECS);
 	do {
@@ -2200,7 +2203,6 @@ static int execute_cmd(struct switchtec_dma_dev *swdma_dev, u32 cmd,
 
 out:
 	mutex_unlock(&swdma_dev->cmd_mutex);
-	rcu_read_unlock();
 	return ret;
 }
 
