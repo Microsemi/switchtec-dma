@@ -1744,10 +1744,17 @@ static ssize_t byte_count_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs __iomem *chan_fw = swdma_chan->mmio_chan_fw;
 	u64 count = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	count = le32_to_cpu((__force __le32)readl(&chan_fw->perf_byte_cnt_hi));
 	count <<= 32;
 	count |= le32_to_cpu((__force __le32)readl(&chan_fw->perf_byte_cnt_lo));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%llx\n", count);
 }
 
@@ -1819,8 +1826,15 @@ static ssize_t latency_max_show(struct dma_chan *chan, char *page)
 	struct chan_fw_regs __iomem *chan_fw = swdma_chan->mmio_chan_fw;
 	u32 lat = 0;
 
+	rcu_read_lock();
+	if (!rcu_dereference(swdma_chan->swdma_dev->pdev)) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
 	lat = le32_to_cpu((__force __le32)readl(&chan_fw->perf_lat_max));
 
+	rcu_read_unlock();
 	return sprintf(page, "0x%x\n", lat);
 }
 
