@@ -534,27 +534,24 @@ static int pause_reset_channel(struct switchtec_dma_chan *swdma_chan)
 {
 	struct chan_hw_regs __iomem *chan_hw = swdma_chan->mmio_chan_hw;
 	struct pci_dev *pdev;
-	int ret = 0;
 
 	rcu_read_lock();
 	pdev = rcu_dereference(swdma_chan->swdma_dev->pdev);
 	if (!pdev) {
-		ret = -ENODEV;
-		goto unlock_and_exit;
+		rcu_read_unlock();
+		return -ENODEV;
 	}
 
 	/* pause channel */
 	writeb(SWITCHTEC_CHAN_CTRL_PAUSE, &chan_hw->ctrl);
+	rcu_read_unlock();
 
 	/* wait 60ms to ensure no pending CEs */
 	msleep(60);
 
 	/* reset channel */
-	ret = reset_channel(swdma_chan);
+	return reset_channel(swdma_chan);
 
-unlock_and_exit:
-	rcu_read_unlock();
-	return ret;
 }
 
 static int enable_channel(struct switchtec_dma_chan *swdma_chan)
