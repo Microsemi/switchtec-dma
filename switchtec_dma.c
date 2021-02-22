@@ -2922,7 +2922,6 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	swdma_dev->is_fabric = is_fabric;
 
 	dma = &swdma_dev->dma_dev;
-	pci_info(pdev, "Channel count: %d\n", chan_cnt);
 	dma->copy_align = DMAENGINE_ALIGN_1_BYTE;
 	dma_cap_set(DMA_MEMCPY, dma->cap_mask);
 	dma_cap_set(DMA_PRIVATE, dma->cap_mask);
@@ -2948,6 +2947,8 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 		switchtec_dma_chans_release(swdma_dev);
 		goto err_exit;
 	}
+
+	pci_info(pdev, "Channel count: %d\n", chan_cnt);
 
 	i = 0;
 	list_for_each_entry(chan, &dma->channels, device_node)
