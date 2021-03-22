@@ -2922,7 +2922,6 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	swdma_dev->is_fabric = is_fabric;
 
 	dma = &swdma_dev->dma_dev;
-	pci_info(pdev, "Channel count: %d\n", chan_cnt);
 	dma->copy_align = DMAENGINE_ALIGN_1_BYTE;
 	dma_cap_set(DMA_MEMCPY, dma->cap_mask);
 	dma_cap_set(DMA_PRIVATE, dma->cap_mask);
@@ -2948,6 +2947,8 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 		switchtec_dma_chans_release(swdma_dev);
 		goto err_exit;
 	}
+
+	pci_info(pdev, "Channel count: %d\n", chan_cnt);
 
 	i = 0;
 	list_for_each_entry(chan, &dma->channels, device_node)
@@ -3072,6 +3073,15 @@ static const struct pci_device_id switchtec_dma_pci_tbl[] = {
 	SWITCHTEC_PCI_DEVICE(0x4252, 1),  //PAX 52XG4
 	SWITCHTEC_PCI_DEVICE(0x4236, 1),  //PAX 36XG4
 	SWITCHTEC_PCI_DEVICE(0x4228, 1),  //PAX 28XG4
+	SWITCHTEC_PCI_DEVICE(0x4352, 0),  //PFXA 52XG4
+	SWITCHTEC_PCI_DEVICE(0x4336, 0),  //PFXA 36XG4
+	SWITCHTEC_PCI_DEVICE(0x4328, 0),  //PFXA 28XG4
+	SWITCHTEC_PCI_DEVICE(0x4452, 0),  //PSXA 52XG4
+	SWITCHTEC_PCI_DEVICE(0x4436, 0),  //PSXA 36XG4
+	SWITCHTEC_PCI_DEVICE(0x4428, 0),  //PSXA 28XG4
+	SWITCHTEC_PCI_DEVICE(0x4552, 1),  //PAXA 52XG4
+	SWITCHTEC_PCI_DEVICE(0x4536, 1),  //PAXA 36XG4
+	SWITCHTEC_PCI_DEVICE(0x4528, 1),  //PAXA 28XG4
 	{0}
 };
 MODULE_DEVICE_TABLE(pci, switchtec_dma_pci_tbl);
