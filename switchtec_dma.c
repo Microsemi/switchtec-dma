@@ -104,6 +104,7 @@ struct dmac_fabric_control_regs {
 #define SWITCHTEC_CHAN_CTRL_RESET     BIT(2)
 #define SWITCHTEC_CHAN_CTRL_ERR_PAUSE BIT(3)
 
+#define SWITCHTEC_CHAN_STS_PAUSED      BIT(9)
 #define SWITCHTEC_CHAN_STS_HALTED      BIT(10)
 #define SWITCHTEC_CHAN_STS_PAUSED_MASK GENMASK(29, 13)
 
@@ -247,6 +248,7 @@ struct switchtec_dma_chan {
 	struct dma_chan dma_chan;
 	struct chan_hw_regs __iomem *mmio_chan_hw;
 	struct chan_fw_regs __iomem *mmio_chan_fw;
+	spinlock_t hw_ctrl_lock;
 
 	struct tasklet_struct desc_task;
 	spinlock_t submit_lock;
@@ -446,20 +448,21 @@ static int halt_channel(struct switchtec_dma_chan *swdma_chan)
 		goto unlock_and_exit;
 	}
 
+	spin_lock(&swdma_chan->hw_ctrl_lock);
 	writeb(SWITCHTEC_CHAN_CTRL_HALT, &chan_hw->ctrl);
 
+	ret = -EIO;
 	do {
 		status = readl(&chan_hw->status);
 
 		if (status & SWITCHTEC_CHAN_STS_HALTED) {
 			ret = 0;
-			goto unlock_and_exit;
+			break;
 		} else {
 			udelay(1000);
 		}
 	} while (retry--);
-
-	ret = -EIO;
+	spin_unlock(&swdma_chan->hw_ctrl_lock);
 
 unlock_and_exit:
 	rcu_read_unlock();
@@ -482,22 +485,23 @@ static int unhalt_channel(struct switchtec_dma_chan *swdma_chan)
 		goto unlock_and_exit;
 	}
 
+	spin_lock(&swdma_chan->hw_ctrl_lock);
 	ctrl = readb(&chan_hw->ctrl);
 	ctrl &= ~SWITCHTEC_CHAN_CTRL_HALT;
 
 	writeb(ctrl, &chan_hw->ctrl);
 
+	ret = -EIO;
 	do {
 		status = readl(&chan_hw->status);
 		if (!(status & SWITCHTEC_CHAN_STS_HALTED)) {
 			ret = 0;
-			goto unlock_and_exit;
+			break;
 		} else {
 			udelay(1000);
 		}
 	} while (retry--);
-
-	ret = -EIO;
+	spin_unlock(&swdma_chan->hw_ctrl_lock);
 
 unlock_and_exit:
 	rcu_read_unlock();
@@ -517,6 +521,10 @@ static int reset_channel(struct switchtec_dma_chan *swdma_chan)
 		return -ENODEV;
 	}
 
+	/*
+	 * This function is only called during initialization, no need to
+	 * protect the access to chan_hw->ctrl with hw_ctrl_lock.
+	 */
 	ctrl = SWITCHTEC_CHAN_CTRL_RESET;
 	ctrl |= SWITCHTEC_CHAN_CTRL_ERR_PAUSE;
 	writel(ctrl, &chan_hw->ctrl);
@@ -542,6 +550,11 @@ static int pause_reset_channel(struct switchtec_dma_chan *swdma_chan)
 		return -ENODEV;
 	}
 
+	/*
+	 * This function is only called during initialization, no need to
+	 * protect the access to chan_hw->ctrl with hw_ctrl_lock.
+	 */
+
 	/* pause channel */
 	writeb(SWITCHTEC_CHAN_CTRL_PAUSE, &chan_hw->ctrl);
 	rcu_read_unlock();
@@ -552,6 +565,81 @@ static int pause_reset_channel(struct switchtec_dma_chan *swdma_chan)
 	/* reset channel */
 	return reset_channel(swdma_chan);
 
+}
+
+#define PAUSE_RESUME_RETRY 100
+static int switchtec_dma_pause(struct dma_chan *chan)
+{
+	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
+	u32 status;
+	struct chan_hw_regs __iomem *chan_hw = swdma_chan->mmio_chan_hw;
+	int retry = PAUSE_RESUME_RETRY;
+	struct pci_dev *pdev;
+	int ret;
+
+	rcu_read_lock();
+	pdev = rcu_dereference(swdma_chan->swdma_dev->pdev);
+	if (!pdev) {
+		ret = -ENODEV;
+		goto unlock_and_exit;
+	}
+
+	spin_lock(&swdma_chan->hw_ctrl_lock);
+	writeb(SWITCHTEC_CHAN_CTRL_PAUSE, &chan_hw->ctrl);
+
+	ret = -EIO;
+	do {
+		status = readl(&chan_hw->status);
+
+		if (status & SWITCHTEC_CHAN_STS_PAUSED) {
+			ret = 0;
+			break;
+		} else {
+			udelay(1000);
+		}
+	} while (retry--);
+	spin_unlock(&swdma_chan->hw_ctrl_lock);
+
+unlock_and_exit:
+	rcu_read_unlock();
+	return ret;
+}
+
+static int switchtec_dma_resume(struct dma_chan *chan)
+{
+	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
+	u32 status;
+	struct chan_hw_regs __iomem *chan_hw = swdma_chan->mmio_chan_hw;
+	int retry = PAUSE_RESUME_RETRY;
+	struct pci_dev *pdev;
+	int ret;
+
+	rcu_read_lock();
+	pdev = rcu_dereference(swdma_chan->swdma_dev->pdev);
+	if (!pdev) {
+		ret = -ENODEV;
+		goto unlock_and_exit;
+	}
+
+	spin_lock(&swdma_chan->hw_ctrl_lock);
+	writeb(0, &chan_hw->ctrl);
+
+	ret = -EIO;
+	do {
+		status = readl(&chan_hw->status);
+
+		if (!(status & SWITCHTEC_CHAN_STS_PAUSED)) {
+			ret = 0;
+			break;
+		} else {
+			udelay(1000);
+		}
+	} while (retry--);
+	spin_unlock(&swdma_chan->hw_ctrl_lock);
+
+unlock_and_exit:
+	rcu_read_unlock();
+	return ret;
 }
 
 static int enable_channel(struct switchtec_dma_chan *swdma_chan)
@@ -1314,6 +1402,7 @@ static int switchtec_dma_chan_init(struct switchtec_dma_dev *swdma_dev, int i)
 
 	swdma_chan->irq = irq;
 
+	spin_lock_init(&swdma_chan->hw_ctrl_lock);
 	spin_lock_init(&swdma_chan->submit_lock);
 	spin_lock_init(&swdma_chan->complete_lock);
 	tasklet_init(&swdma_chan->desc_task, switchtec_dma_desc_task,
@@ -2933,6 +3022,8 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	dma->device_prep_dma_imm_data = switchtec_dma_prep_wimm_data;
 	dma->device_issue_pending = switchtec_dma_issue_pending;
 	dma->device_tx_status = switchtec_dma_tx_status;
+	dma->device_pause = switchtec_dma_pause;
+	dma->device_resume = switchtec_dma_resume;
 
 	rc = switchtec_dma_init_fabric(swdma_dev);
 	if (rc) {
