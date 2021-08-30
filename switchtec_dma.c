@@ -2999,6 +2999,7 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 		goto err_exit;
 	}
 
+	swdma_dev->is_fabric = is_fabric;
 	chan_cnt = switchtec_dma_chans_enumerate(swdma_dev, chan_cnt);
 	if (chan_cnt < 0) {
 		pci_err(pdev, "Failed to enumerate dma channels: %d\n",
@@ -3008,7 +3009,6 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	}
 
 	swdma_dev->chan_cnt = chan_cnt;
-	swdma_dev->is_fabric = is_fabric;
 
 	dma = &swdma_dev->dma_dev;
 	dma->copy_align = DMAENGINE_ALIGN_1_BYTE;
