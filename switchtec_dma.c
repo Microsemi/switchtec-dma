@@ -1456,12 +1456,6 @@ static int switchtec_dma_chans_release(struct switchtec_dma_dev *swdma_dev)
 	return 0;
 }
 
-static int switchtec_dma_get_chan_cnt(struct switchtec_dma_dev *swdma_dev)
-{
-	return le32_to_cpu((__force __le32)
-			readl(&swdma_dev->mmio_dmac_cap->chan_cnt));
-}
-
 static int switchtec_dma_chans_enumerate(struct switchtec_dma_dev *swdma_dev,
 					 int chan_cnt)
 {
@@ -2992,7 +2986,8 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 
 	swdma_dev->chan_status_irq = irq;
 
-	chan_cnt = switchtec_dma_get_chan_cnt(swdma_dev);
+	chan_cnt = le32_to_cpu((__force __le32)
+			       readl(&swdma_dev->mmio_dmac_cap->chan_cnt));
 	if (!chan_cnt) {
 		pci_err(pdev, "No channel configured.\n");
 		rc = -ENXIO;
