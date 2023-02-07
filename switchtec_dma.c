@@ -3023,15 +3023,13 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	rc = switchtec_dma_init_fabric(swdma_dev);
 	if (rc) {
 		pci_err(pdev, "Failed to init fabric DMA: %d\n", rc);
-		switchtec_dma_chans_release(swdma_dev);
-		goto err_exit;
+		goto err_chans_release_exit;
 	}
 
 	rc = dma_async_device_register(dma);
 	if (rc) {
 		pci_err(pdev, "Failed to register dma device: %d\n", rc);
-		switchtec_dma_chans_release(swdma_dev);
-		goto err_exit;
+		goto err_chans_release_exit;
 	}
 
 	pci_info(pdev, "Channel count: %d\n", chan_cnt);
@@ -3047,6 +3045,9 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	list_add_tail(&swdma_dev->list, &dma_list);
 
 	return 0;
+
+err_chans_release_exit:
+	switchtec_dma_chans_release(swdma_dev);
 
 err_exit:
 	if (swdma_dev->chan_status_irq)
