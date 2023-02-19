@@ -1284,6 +1284,7 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 {
 	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
 	struct pci_dev *pdev;
+	int irq = -1;
 
 	spin_lock_bh(&swdma_chan->submit_lock);
 	swdma_chan->ring_active = false;
@@ -1294,8 +1295,11 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 	rcu_read_lock();
 	pdev = rcu_dereference(swdma_chan->swdma_dev->pdev);
 	if (pdev)
-		synchronize_irq(swdma_chan->irq);
+		irq = swdma_chan->irq;
 	rcu_read_unlock();
+
+	if (irq >= 0)
+		synchronize_irq(irq);
 
 	tasklet_kill(&swdma_chan->desc_task);
 
