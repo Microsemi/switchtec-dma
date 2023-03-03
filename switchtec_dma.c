@@ -255,6 +255,7 @@ struct switchtec_dma_chan {
 	bool ring_active;
 	int cid;
 	spinlock_t complete_lock;
+	bool comp_ring_active;
 
 	/* channel index and irq */
 	int index;
@@ -719,6 +720,10 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 
 	do {
 		spin_lock_bh(&swdma_chan->complete_lock);
+		if (!swdma_chan->comp_ring_active) {
+			spin_unlock_bh(&swdma_chan->complete_lock);
+			break;
+		}
 
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
 		phase_tag = smp_load_acquire(&ce->phase_tag);
@@ -1080,7 +1085,7 @@ static irqreturn_t switchtec_dma_isr(int irq, void *chan)
 {
 	struct switchtec_dma_chan *swdma_chan = chan;
 
-	if (swdma_chan->ring_active)
+	if (swdma_chan->comp_ring_active)
 		tasklet_schedule(&swdma_chan->desc_task);
 
 	return IRQ_HANDLED;
@@ -1249,6 +1254,7 @@ static int switchtec_dma_alloc_chan_resources(struct dma_chan *chan)
 		return rc;
 
 	swdma_chan->ring_active = true;
+	swdma_chan->comp_ring_active = true;
 	swdma_chan->cid = 0;
 
 	dma_cookie_init(chan);
@@ -1288,6 +1294,10 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 	spin_lock_bh(&swdma_chan->submit_lock);
 	swdma_chan->ring_active = false;
 	spin_unlock_bh(&swdma_chan->submit_lock);
+
+	spin_lock_bh(&swdma_chan->complete_lock);
+	swdma_chan->comp_ring_active = false;
+	spin_unlock_bh(&swdma_chan->complete_lock);
 
 	switchtec_dma_chan_stop(swdma_chan);
 
@@ -1436,6 +1446,10 @@ static int switchtec_dma_chan_free(struct switchtec_dma_chan *swdma_chan)
 	spin_lock_bh(&swdma_chan->submit_lock);
 	swdma_chan->ring_active = false;
 	spin_unlock_bh(&swdma_chan->submit_lock);
+
+	spin_lock_bh(&swdma_chan->complete_lock);
+	swdma_chan->comp_ring_active = false;
+	spin_unlock_bh(&swdma_chan->complete_lock);
 
 	devm_free_irq(&pdev->dev, swdma_chan->irq, swdma_chan);
 
