@@ -255,6 +255,7 @@ struct switchtec_dma_chan {
 	bool ring_active;
 	int cid;
 	spinlock_t complete_lock;
+	bool comp_ring_active;
 
 	/* channel index and irq */
 	int index;
@@ -719,6 +720,10 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 
 	do {
 		spin_lock_bh(&swdma_chan->complete_lock);
+		if (!swdma_chan->comp_ring_active) {
+			spin_unlock_bh(&swdma_chan->complete_lock);
+			break;
+		}
 
 		ce = switchtec_dma_get_ce(swdma_chan, swdma_chan->cq_tail);
 		phase_tag = smp_load_acquire(&ce->phase_tag);
@@ -801,12 +806,14 @@ static void switchtec_dma_process_desc(struct switchtec_dma_chan *swdma_chan)
 	} while (1);
 }
 
-static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
+static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan,
+		int force)
 {
 	struct dmaengine_result res;
 	struct switchtec_dma_desc *desc;
 
-	switchtec_dma_process_desc(swdma_chan);
+	if (!force)
+		switchtec_dma_process_desc(swdma_chan);
 
 	spin_lock_bh(&swdma_chan->complete_lock);
 
@@ -819,7 +826,8 @@ static void switchtec_dma_abort_desc(struct switchtec_dma_chan *swdma_chan)
 
 		dma_cookie_complete(&desc->txd);
 		dma_descriptor_unmap(&desc->txd);
-		dmaengine_desc_get_callback_invoke(&desc->txd, &res);
+		if (!force)
+			dmaengine_desc_get_callback_invoke(&desc->txd, &res);
 		desc->txd.callback = NULL;
 		desc->txd.callback_result = NULL;
 
@@ -852,6 +860,64 @@ static void switchtec_dma_chan_stop(struct switchtec_dma_chan *swdma_chan)
 	writel(0, &swdma_chan->mmio_chan_fw->cq_base_hi);
 
 	rcu_read_unlock();
+}
+
+static int switchtec_dma_terminate_all(struct dma_chan *chan)
+{
+	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
+	int rc = 0;
+
+	spin_lock_bh(&swdma_chan->complete_lock);
+	swdma_chan->comp_ring_active = false;
+	spin_unlock_bh(&swdma_chan->complete_lock);
+
+	rc = pause_reset_channel(swdma_chan);
+	if (rc)
+		dev_err(to_chan_dev(swdma_chan),
+			"%s: pause reset channel failed\n",
+			dma_chan_name(chan));
+
+	return rc;
+}
+
+static void switchtec_dma_synchronize(struct dma_chan *chan)
+{
+	struct pci_dev *pdev;
+	struct switchtec_dma_chan *swdma_chan = to_switchtec_dma_chan(chan);
+	int rc;
+
+	rcu_read_lock();
+	pdev = rcu_dereference(swdma_chan->swdma_dev->pdev);
+	if (pdev)
+		synchronize_irq(swdma_chan->irq);
+	rcu_read_unlock();
+
+	switchtec_dma_abort_desc(swdma_chan, 1);
+
+	rc = enable_channel(swdma_chan);
+	if (rc)
+		return;
+
+	rc = reset_channel(swdma_chan);
+	if (rc)
+		return;
+
+	rc = unhalt_channel(swdma_chan);
+	if (rc)
+		return;
+
+	spin_lock_bh(&swdma_chan->submit_lock);
+	swdma_chan->head = 0;
+	spin_unlock_bh(&swdma_chan->submit_lock);
+
+	spin_lock_bh(&swdma_chan->complete_lock);
+	swdma_chan->comp_ring_active = true;
+	swdma_chan->phase_tag = 0;
+	swdma_chan->tail = 0;
+	swdma_chan->cq_tail = 0;
+	swdma_chan->cid = 0;
+	dma_cookie_init(chan);
+	spin_unlock_bh(&swdma_chan->complete_lock);
 }
 
 static void switchtec_dma_desc_task(unsigned long data)
@@ -1080,7 +1146,7 @@ static irqreturn_t switchtec_dma_isr(int irq, void *chan)
 {
 	struct switchtec_dma_chan *swdma_chan = chan;
 
-	if (swdma_chan->ring_active)
+	if (swdma_chan->comp_ring_active)
 		tasklet_schedule(&swdma_chan->desc_task);
 
 	return IRQ_HANDLED;
@@ -1249,6 +1315,7 @@ static int switchtec_dma_alloc_chan_resources(struct dma_chan *chan)
 		return rc;
 
 	swdma_chan->ring_active = true;
+	swdma_chan->comp_ring_active = true;
 	swdma_chan->cid = 0;
 
 	dma_cookie_init(chan);
@@ -1289,6 +1356,10 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 	swdma_chan->ring_active = false;
 	spin_unlock_bh(&swdma_chan->submit_lock);
 
+	spin_lock_bh(&swdma_chan->complete_lock);
+	swdma_chan->comp_ring_active = false;
+	spin_unlock_bh(&swdma_chan->complete_lock);
+
 	switchtec_dma_chan_stop(swdma_chan);
 
 	rcu_read_lock();
@@ -1299,7 +1370,7 @@ static void switchtec_dma_free_chan_resources(struct dma_chan *chan)
 
 	tasklet_kill(&swdma_chan->desc_task);
 
-	switchtec_dma_abort_desc(swdma_chan);
+	switchtec_dma_abort_desc(swdma_chan, 0);
 
 	switchtec_dma_free_desc(swdma_chan);
 
@@ -1437,6 +1508,10 @@ static int switchtec_dma_chan_free(struct switchtec_dma_chan *swdma_chan)
 	swdma_chan->ring_active = false;
 	spin_unlock_bh(&swdma_chan->submit_lock);
 
+	spin_lock_bh(&swdma_chan->complete_lock);
+	swdma_chan->comp_ring_active = false;
+	spin_unlock_bh(&swdma_chan->complete_lock);
+
 	devm_free_irq(&pdev->dev, swdma_chan->irq, swdma_chan);
 
 	switchtec_chan_kobject_del(swdma_chan);
@@ -1454,12 +1529,6 @@ static int switchtec_dma_chans_release(struct switchtec_dma_dev *swdma_dev)
 		switchtec_dma_chan_free(swdma_dev->swdma_chans[i]);
 
 	return 0;
-}
-
-static int switchtec_dma_get_chan_cnt(struct switchtec_dma_dev *swdma_dev)
-{
-	return le32_to_cpu((__force __le32)
-			readl(&swdma_dev->mmio_dmac_cap->chan_cnt));
 }
 
 static int switchtec_dma_chans_enumerate(struct switchtec_dma_dev *swdma_dev,
@@ -2992,7 +3061,8 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 
 	swdma_dev->chan_status_irq = irq;
 
-	chan_cnt = switchtec_dma_get_chan_cnt(swdma_dev);
+	chan_cnt = le32_to_cpu((__force __le32)
+			       readl(&swdma_dev->mmio_dmac_cap->chan_cnt));
 	if (!chan_cnt) {
 		pci_err(pdev, "No channel configured.\n");
 		rc = -ENXIO;
@@ -3024,19 +3094,19 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	dma->device_tx_status = switchtec_dma_tx_status;
 	dma->device_pause = switchtec_dma_pause;
 	dma->device_resume = switchtec_dma_resume;
+	dma->device_terminate_all = switchtec_dma_terminate_all;
+	dma->device_synchronize = switchtec_dma_synchronize;
 
 	rc = switchtec_dma_init_fabric(swdma_dev);
 	if (rc) {
 		pci_err(pdev, "Failed to init fabric DMA: %d\n", rc);
-		switchtec_dma_chans_release(swdma_dev);
-		goto err_exit;
+		goto err_chans_release_exit;
 	}
 
 	rc = dma_async_device_register(dma);
 	if (rc) {
 		pci_err(pdev, "Failed to register dma device: %d\n", rc);
-		switchtec_dma_chans_release(swdma_dev);
-		goto err_exit;
+		goto err_chans_release_exit;
 	}
 
 	pci_info(pdev, "Channel count: %d\n", chan_cnt);
@@ -3052,6 +3122,9 @@ static int switchtec_dma_create(struct pci_dev *pdev, bool is_fabric)
 	list_add_tail(&swdma_dev->list, &dma_list);
 
 	return 0;
+
+err_chans_release_exit:
+	switchtec_dma_chans_release(swdma_dev);
 
 err_exit:
 	if (swdma_dev->chan_status_irq)
