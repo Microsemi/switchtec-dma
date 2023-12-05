@@ -185,6 +185,7 @@ enum {
 #define SWITCHTEC_LAT_SE_FETCH   BIT(0)
 #define SWITCHTEC_LAT_VDM        BIT(1)
 #define SWITCHTEC_LAT_RD_IMM     BIT(2)
+#define SWITCHTEC_LAT_FW_NP      BIT(3)
 #define SWITCHTEC_LAT_SE_PROCESS BIT(4)
 
 struct chan_fw_regs {
@@ -2088,6 +2089,12 @@ static ssize_t latency_selector_show(struct dma_chan *chan, char *page)
 	else
 		strcat(page, "\n");
 
+	strcat(page, "(5) FW NP TLP latency");
+	if (lat & SWITCHTEC_LAT_FW_NP)
+		strcat(page, " (*)\n");
+	else
+		strcat(page, "\n");
+
 	strcat(page, "\n");
 
 	rcu_read_unlock();
@@ -2126,6 +2133,9 @@ static ssize_t latency_selector_store(struct dma_chan *chan, const char *page,
 			break;
 		case 4:
 			lat_type = SWITCHTEC_LAT_SE_PROCESS;
+			break;
+		case 5:
+			lat_type = SWITCHTEC_LAT_FW_NP;
 			break;
 		default:
 			ret = -EINVAL;

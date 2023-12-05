@@ -111,7 +111,7 @@ number and channel number. Below is a table describing these files.
 
 File name | Read/Write | Description
 :---      |:---        |:---
-latency_selector | R/W | To select a latency type to measure the latency_min, latency_max and latency_last values. Valid types are:<br />1: SE Fetch latency<br />2: VDM latency<br />3: Read Immediate latency<br />4: SE Processing latency
+latency_selector | R/W | To select a latency type to measure the latency_min, latency_max and latency_last values. Valid types are:<br />1: SE Fetch latency<br />2: VDM latency<br />3: Read Immediate latency<br />4: SE Processing latency<br />5: FW NP latency
 latency_min | R/O | Minimum turnaround time for this channel since reset or the last time the register read measured in nanoseconds.
 latency_max | R/O | Maximum turnaround time for this channel since reset or the last time the register read measured in nanoseconds.
 latency_last | R/O | The last turnaround time for this channel measured in nanoseconds.
