@@ -2195,10 +2195,11 @@ static struct attribute *switchtec_config_attrs[] = {
 	&mrrs_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(switchtec_config);
 
 static struct kobj_type switchtec_config_ktype = {
 	.sysfs_ops = &switchtec_config_sysfs_ops,
-	.default_attrs = switchtec_config_attrs,
+	.default_groups = switchtec_config_groups,
 };
 
 static ssize_t switchtec_pmon_attr_show(struct kobject *kobj,
@@ -2248,10 +2249,11 @@ static struct attribute *switchtec_pmon_attrs[] = {
 	&latency_selector_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(switchtec_pmon);
 
 static struct kobj_type switchtec_pmon_ktype = {
 	.sysfs_ops = &switchtec_pmon_sysfs_ops,
-	.default_attrs = switchtec_pmon_attrs,
+	.default_groups = switchtec_pmon_groups,
 };
 
 static void switchtec_chan_kobject_add(struct switchtec_dma_chan *swdma_chan)
@@ -3152,15 +3154,7 @@ static int switchtec_dma_probe(struct pci_dev *pdev,
 	if (rc)
 		return rc;
 
-	rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
-	if (rc)
-		rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
-	if (rc)
-		return rc;
-
-	rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64));
-	if (rc)
-		rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
+	rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (rc)
 		return rc;
 
