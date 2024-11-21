@@ -3174,13 +3174,13 @@ static int switchtec_dma_probe(struct pci_dev *pdev,
 	if (rc)
 		rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
 	if (rc)
-		return rc;
+		goto err_disable;
 
 	rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64));
 	if (rc)
 		rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
 	if (rc)
-		return rc;
+		goto err_disable;
 
 	rc = pcim_iomap_regions(pdev, 1, KBUILD_MODNAME);
 	if (rc)
@@ -3198,6 +3198,9 @@ static int switchtec_dma_probe(struct pci_dev *pdev,
 
 err_free_irq_vectors:
 	pci_free_irq_vectors(pdev);
+
+err_disable:
+	pci_disable_device(pdev);
 	return rc;
 }
 
