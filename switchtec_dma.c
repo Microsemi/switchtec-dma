@@ -2196,9 +2196,18 @@ static struct attribute *switchtec_config_attrs[] = {
 	NULL,
 };
 
+static struct attribute_group switchtec_config_group = {
+    .attrs = switchtec_config_attrs,
+};
+
+static const struct attribute_group *switchtec_config_groups[] = {
+    &switchtec_config_group,
+    NULL,
+};
+
 static struct kobj_type switchtec_config_ktype = {
 	.sysfs_ops = &switchtec_config_sysfs_ops,
-	.default_attrs = switchtec_config_attrs,
+	.default_groups = switchtec_config_groups,
 };
 
 static ssize_t switchtec_pmon_attr_show(struct kobject *kobj,
@@ -2249,9 +2258,18 @@ static struct attribute *switchtec_pmon_attrs[] = {
 	NULL,
 };
 
+static struct attribute_group switchtec_pmon_group = {
+    .attrs = switchtec_pmon_attrs,
+};
+
+static const struct attribute_group *switchtec_pmon_groups[] = {
+    &switchtec_pmon_group,
+    NULL,
+};
+
 static struct kobj_type switchtec_pmon_ktype = {
 	.sysfs_ops = &switchtec_pmon_sysfs_ops,
-	.default_attrs = switchtec_pmon_attrs,
+	.default_groups = switchtec_pmon_groups,
 };
 
 static void switchtec_chan_kobject_add(struct switchtec_dma_chan *swdma_chan)
@@ -3152,17 +3170,9 @@ static int switchtec_dma_probe(struct pci_dev *pdev,
 	if (rc)
 		return rc;
 
-	rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
+	rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (rc)
-		rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
-	if (rc)
-		return rc;
-
-	rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64));
-	if (rc)
-		rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
-	if (rc)
-		return rc;
+		goto err_disable;
 
 	rc = pcim_iomap_regions(pdev, 1, KBUILD_MODNAME);
 	if (rc)
@@ -3180,6 +3190,9 @@ static int switchtec_dma_probe(struct pci_dev *pdev,
 
 err_free_irq_vectors:
 	pci_free_irq_vectors(pdev);
+
+err_disable:
+	pci_disable_device(pdev);
 	return rc;
 }
 
