@@ -3241,6 +3241,17 @@ static void switchtec_dma_remove(struct pci_dev *pdev)
 		.driver_data = is_fabric, \
 	}
 
+#define SWITCHTEC_PCI100X_DEVICE(device_id, is_fabric) \
+	{ \
+		.vendor     = PCI_VENDOR_ID_EFAR, \
+		.device     = device_id, \
+		.subvendor  = PCI_ANY_ID, \
+		.subdevice  = PCI_ANY_ID, \
+		.class      = PCI_CLASS_SYSTEM_OTHER << 8, \
+		.class_mask = 0xFFFFFFFF, \
+		.driver_data = is_fabric, \
+	}
+
 static const struct pci_device_id switchtec_dma_pci_tbl[] = {
 	SWITCHTEC_PCI_DEVICE(0x4000, 0),  //PFX 100XG4
 	SWITCHTEC_PCI_DEVICE(0x4084, 0),  //PFX 84XG4
@@ -3293,6 +3304,11 @@ static const struct pci_device_id switchtec_dma_pci_tbl[] = {
 	SWITCHTEC_PCI_DEVICE(0x5452, 0),  //PSXA 52XG5
 	SWITCHTEC_PCI_DEVICE(0x5436, 0),  //PSXA 36XG5
 	SWITCHTEC_PCI_DEVICE(0x5428, 0),  //PSXA 28XG5
+	SWITCHTEC_PCI100X_DEVICE(0x1001, 0), //PCI1001 16XG4
+	SWITCHTEC_PCI100X_DEVICE(0x1002, 0), //PCI1002 12XG4
+	SWITCHTEC_PCI100X_DEVICE(0x1003, 0), //PCI1003 16XG4
+	SWITCHTEC_PCI100X_DEVICE(0x1004, 0), //PCI1004 16XG4
+	SWITCHTEC_PCI100X_DEVICE(0x1005, 0), //PCI1005 16XG4
 	{0}
 };
 MODULE_DEVICE_TABLE(pci, switchtec_dma_pci_tbl);
